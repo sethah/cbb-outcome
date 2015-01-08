@@ -47,7 +47,7 @@ def scoreboard_url(date):
     prefix = 'http://stats.ncaa.org/team/schedule_list?academic_year='
     suffix = '&division=1.0&sport_code=MBB&schedule_date='
 
-    return prefix+str(date.year)+suffix+date_string
+    return prefix+str(2014)+suffix+date_string
 
 
 def get_largest_table(soup):
