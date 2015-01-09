@@ -15,7 +15,7 @@ def main():
     for single_date in (start_date + timedelta(n) for n in xrange(day_count)):
         teams, box_link_list, missing_links = missing_data(single_date, test_postgres())
         no_links.extend(missing_links)
-    print len(no_links)
+        print len(no_links)
 
 
 def test_postgres():
@@ -34,7 +34,10 @@ def missing_data(date, ncaa_names):
 
     soup = scrape.get_soup(scoreboard_url)
     largest_table = scrape.get_largest_table(soup)
-    game_tables = largest_table.findAll('table')
+    if largest_table is not None:
+        game_tables = largest_table.findAll('table')
+    else:
+        return [], [], []
 
     team_list, box_link_list, missing_links = [], [], []
     for game in game_tables:
