@@ -3,11 +3,10 @@ import psycopg2.extras
 
 
 def main():
+
     cur, conn = get_cursor()
-    team_exists(cur, 'Indiana')
-    return None
     create_box_table(cur)
-    # alter_table(cur, "box_stats")
+    team_exists(cur, 'Indiana')
     conn.commit()
     conn.close()
 
@@ -29,20 +28,19 @@ def get_teams(cur):
     
     return rows
 
-
+insert into games(home_team, away_team, home_outcome, home_score, away_score, neutral_site, dt) values('asdf','as','as',1,1,True,timestamp '2014-08-08':date);
 def team_exists(cur, team, col='ncaa'):
-    query = """
-            SELECT %s
+    query = """SELECT %s
             FROM raw_teams
             WHERE %s = '%s'
             """ % (col, col, team)
 
-    result = cur.execute(query)
-    if result is not None:
-        print result.fetchone()
+    cur.execute(query)
+    result = cur.fetchone()
+    if result is None:
+        return False
     else:
-        print 'Team does not exist'
-    # print result
+        return True
 
 
 def list_tables(cur):
@@ -59,11 +57,42 @@ def alter_table(cur,table_name):
     cur.execute(add_col)
 
 
+def store_box_row(row_dict):
+    header_dict = {'Player':'team', 'MP':'mp', 'FGM':'fgm', \
+                    'FGA':'fga', '3FG':'tpm', '3FGA':'tpa', 'FT':'ftm', \
+                    'FTA':'fta', 'PTS':'pts', 'ORebs':'oreb', \
+                    'DRebs':'dreb', 'Tot Reb':'reb', 'AST':'ast', \
+                    'TO':'turnover', 'STL':'stl', 'BLK':'blk', \
+                    'Fouls':'pf'}
+    header_dict = {'Player':'team', 'MP':'mp', 'FGM':'fgm', \
+                    'FGA':'fga', '3FG':'tpm', '3FGA':'tpa', 'FT':'ftm', \
+                    'FTA':'fta', 'PTS':'pts', 'ORebs':'oreb', \
+                    'DRebs':'dreb', 'Tot Reb':'reb', 'AST':'ast', \
+                    'TO':'turnover', 'STL':'stl', 'BLK':'blk', \
+                    'Fouls':'pf'}
+
+    for category in row_dict:
+        insert = """INSERT INTO box_stats
+
+                """
+
+
+def get_team_id(cur, team, col='ncaa'):
+    query = """SELECT ncaaID
+               FROM raw_teams
+               WHERE %s = '%s'
+            """ % (col, team)
+    print query
+    cur.execute(query)
+
+    return cur.fetchone()[0]
+
+
 def create_box_table(cur):
     print list_tables(cur)
     create_games = """CREATE TABLE games
     (
-        ID INT PRIMARY KEY     NOT NULL,
+        ID SERIAL PRIMARY KEY  NOT NULL,
         home_team text         NOT NULL,
         away_team text         NOT NULL,
         home_outcome text      NOT NULL,
@@ -74,7 +103,7 @@ def create_box_table(cur):
     );"""
     create_box = """CREATE TABLE box_stats
     (
-        ID INT PRIMARY KEY     NOT NULL,
+        ID SERIAL PRIMARY KEY     NOT NULL,
         gameid int NOT NULL REFERENCES games(ID),
         teamid text            NOT NULL,
         pts INT                NOT NULL,
