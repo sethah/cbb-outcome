@@ -1,14 +1,6 @@
 import psycopg2
 import psycopg2.extras
-
-
-def main():
-
-    cur, conn = get_cursor()
-    create_box_table(cur)
-    team_exists(cur, 'Indiana')
-    conn.commit()
-    conn.close()
+from datetime import datetime, date
 
 
 def get_cursor(cursor_type=None):
@@ -21,14 +13,15 @@ def get_cursor(cursor_type=None):
 
     return cur, conn
 
+
 def get_teams(cur):
     query = """SELECT * FROM raw_teams"""
     cur.execute(query)
     rows = cur.fetchall()
-    
+
     return rows
 
-insert into games(home_team, away_team, home_outcome, home_score, away_score, neutral_site, dt) values('asdf','as','as',1,1,True,timestamp '2014-08-08':date);
+
 def team_exists(cur, team, col='ncaa'):
     query = """SELECT %s
             FROM raw_teams
@@ -50,26 +43,20 @@ def list_tables(cur):
     return cur.fetchall()
 
 
-def alter_table(cur,table_name):
-    add_col = """ALTER TABLE %s 
+def alter_table(cur, table_name):
+    add_col = """ALTER TABLE %s
                  ADD COLUMN pts int NOT NULL
               """ % table_name
     cur.execute(add_col)
 
 
 def store_box_row(row_dict):
-    header_dict = {'Player':'team', 'MP':'mp', 'FGM':'fgm', \
-                    'FGA':'fga', '3FG':'tpm', '3FGA':'tpa', 'FT':'ftm', \
-                    'FTA':'fta', 'PTS':'pts', 'ORebs':'oreb', \
-                    'DRebs':'dreb', 'Tot Reb':'reb', 'AST':'ast', \
-                    'TO':'turnover', 'STL':'stl', 'BLK':'blk', \
-                    'Fouls':'pf'}
-    header_dict = {'Player':'team', 'MP':'mp', 'FGM':'fgm', \
-                    'FGA':'fga', '3FG':'tpm', '3FGA':'tpa', 'FT':'ftm', \
-                    'FTA':'fta', 'PTS':'pts', 'ORebs':'oreb', \
-                    'DRebs':'dreb', 'Tot Reb':'reb', 'AST':'ast', \
-                    'TO':'turnover', 'STL':'stl', 'BLK':'blk', \
-                    'Fouls':'pf'}
+    header_dict = {'Player': 'team', 'MP': 'mp', 'FGM': 'fgm',
+                   'FGA': 'fga', '3FG': 'tpm', '3FGA': 'tpa', 'FT': 'ftm',
+                   'FTA': 'fta', 'PTS': 'pts', 'ORebs': 'oreb',
+                   'DRebs': 'dreb', 'Tot Reb': 'reb', 'AST': 'ast',
+                   'TO': 'turnover', 'STL': 'stl', 'BLK': 'blk',
+                   'Fouls': 'pf'}
 
     for category in row_dict:
         insert = """INSERT INTO box_stats
@@ -77,19 +64,37 @@ def store_box_row(row_dict):
                 """
 
 
+def insert_game(cur, val_dict):
+    
+    table = 'games'
+    keys = val_dict.keys()
+    values = [val_dict[k] for k in keys]
+    sqlCommand = 'INSERT INTO {table} ({keys}) VALUES ({placeholders});'.format(
+      table = table,
+      keys = ', '.join(keys),
+      placeholders = ', '.join([ "%s" for v in values ])  # extra quotes may not be necessary
+    )
+
+    cur.execute(sqlCommand,values)
+
+
 def get_team_id(cur, team, col='ncaa'):
     query = """SELECT ncaaID
                FROM raw_teams
                WHERE %s = '%s'
             """ % (col, team)
-    print query
+
     cur.execute(query)
 
     return cur.fetchone()[0]
 
 
-def create_box_table(cur):
+def create_tables(cur):
     print list_tables(cur)
+
+    cur.execute("""DROP TABLE IF EXISTS box_stats;""")
+    cur.execute("""DROP TABLE IF EXISTS games;""")
+
     create_games = """CREATE TABLE games
     (
         ID SERIAL PRIMARY KEY  NOT NULL,
@@ -98,8 +103,14 @@ def create_box_table(cur):
         home_outcome text      NOT NULL,
         home_score int         NOT NULL,
         away_score INT         NOT NULL,
+        home_first int         NOT NULL,
+        away_first int         NOT NULL,
         neutral_site BOOLEAN   NOT NULL,
-        dt DATE                NOT NULL
+        officials text                 ,
+        attendance INT                 ,
+        venue text                     ,
+        dt DATE                NOT NULL,
+        UNIQUE(home_team, away_team, dt)
     );"""
     create_box = """CREATE TABLE box_stats
     (
@@ -127,6 +138,14 @@ def create_box_table(cur):
     cur.execute(create_box)
     print list_tables(cur)
 
+
+def main():
+    cur, conn = get_cursor()
+    #insert_game(cur,this_game)
+    create_tables(cur)
+    #team_exists(cur, 'Indiana')
+    conn.commit()
+    conn.close()
 
 if __name__ == '__main__':
       main()  
