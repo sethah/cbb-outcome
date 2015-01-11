@@ -17,18 +17,24 @@ class Page_Opener:
         self.headers = {'User-Agent': self.agent}
 
     def open_and_soup(self, url, data=None):
-        print url
         req = urllib2.Request(url, data=None, headers=self.headers)
         try:
             response = self.opener.open(req)
         except httplib.BadStatusLine as e:
             print e, e.line
         else:
-            print 'Success'
+            pass
 
         the_page = response.read()
         soup = BeautifulSoup(the_page)
         return soup
+
+
+def print_msg(msg, char='-'):
+    l = len(msg)
+    print char*l
+    print msg
+    print char*l+'\n'
 
 
 def get_soup(link):

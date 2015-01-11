@@ -4,9 +4,13 @@ from datetime import datetime, timedelta, date
 import db_tools
 import traceback
 import csv
+import re
 
 
 def get_game_data(soup, game_dict):
+    if soup is None:
+        return game_dict
+
     hdrs = {'Game Date', 'Location', 'Attendance', 'Officials'}
     rows = soup.findAll('tr')
     for row in rows:
@@ -61,18 +65,34 @@ def get_teams_and_score(box_soup, game_dict):
     else:
         game_dict['home_outcome'] = 'L'
 
-    return game_dict
+    return game_dict, home_team, away_team
 
 
 def store_games(start_date, end_date):
-    start_date = datetime(2013, 11, 9).date()
-    end_date = datetime(2013, 11, 9).date()
     day_count = (end_date - start_date).days + 1
 
     for single_date in (start_date + timedelta(n) for n in xrange(day_count)):
+        date_string = datetime.strftime(single_date, '%m/%d/%Y')
         teams, box_link_list, missing_games = get_box_links(single_date)
+        
+        # write the missing games into a csv
+        write_missing_links(missing_games)
+
+        msg = 'Storing games for %s' % date_string
+        scrape.print_msg(msg)
+
+        stored_count = 0
+        not_stored_count = 0
         for link in box_link_list:
-            store_game(link)
+            stored = store_game(link)
+            if stored:
+                stored_count += 1
+            else:
+                not_stored_count += 1
+
+        msg = '%d out of %d games were stored' % \
+                (stored_count, stored_count + not_stored_count)
+        scrape.print_msg(msg, '*')
 
 
 def store_game(link):
@@ -81,13 +101,16 @@ def store_game(link):
                 'officials': '', 'attendance': 0, 'venue': '',
                 'dt': None}
 
+    soup = scrape.get_soup(link)
+    if soup is None:
+        return False
+
     # grab the cursor for the database
     cur, conn = db_tools.get_cursor()
-    soup = scrape.get_soup(link)
 
     # fill game dict with data from the link
     this_game = get_game_data(soup, this_game)
-    this_game = get_teams_and_score(soup, this_game)
+    this_game, home_team, away_team = get_teams_and_score(soup, this_game)
 
     # store the game in the database
     try:
@@ -95,11 +118,18 @@ def store_game(link):
         conn.commit()
         
     except Exception, e:
-        print traceback.format_exc()
         print "Error storing game for %s, %s, on %s" \
-              % (this_game['home_team'], this_game['away_team'], this_game['dt'])
+              % (home_team, away_team, this_game['dt'])
+
+        if this_game['home_team'] is None or this_game['away_team'] is None:
+            # error storing game due to null condition
+            print "Home team is: %s, and away team is: %s \n" \
+              % (this_game['home_team'], this_game['away_team'])
+        elif type(e).__name__ == 'IntegrityError':
+            # error storing game due to something else
+            print 'This game already exists!\n'
         conn.rollback()
-        return None
+        return False
 
     cur.execute("""SELECT id
                        FROM games
@@ -118,6 +148,8 @@ def store_game(link):
         db_tools.insert_values('box_stats', box_dict, cur=cur)
     conn.commit()
     conn.close()
+
+    return True
 
 
 def get_box_links(date):
@@ -242,6 +274,10 @@ def raw_box_to_stats(rows, gameid):
         k = 0
         for td in tds:
             string = td.get_text().strip()
+
+            # remove non ASCII
+            string = re.sub(r'[^\x00-\x7f]',r'',string)
+
             if string == '':
                 # ignore empty cells
                 k += 1
@@ -258,12 +294,8 @@ def raw_box_to_stats(rows, gameid):
                     val = int(string[0:string.find(':')])
                     box_data[j][header_dict[hdrs[k]]] = val
             else:
-                #some of the values have a '/' appended, so remove it
-                try:
-                    val = int(string.replace('/',''))
-                except:
-                    print val, hdrs[k]
-                    val = 0
+                # some of the values have a '/' appended, so remove it
+                val = int(string.replace('/',''))
                 box_data[j][header_dict[hdrs[k]]] = val
 
             k += 1
@@ -295,7 +327,11 @@ def write_missing_links(missing_games):
 
 
 def main():
-    store_games('start_date', 'end_date')
+    start_date = datetime(2013, 11, 11).date()
+    end_date = datetime(2013, 11, 12).date()
+    store_games(start_date, end_date)
+    l = 'http://stats.ncaa.org/game/box_score/2694293'
+    #store_game(l)
     return None
     the_date = date(2014, 12, 19)
     year = scrape.year_from_date(the_date)
