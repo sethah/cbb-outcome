@@ -43,11 +43,38 @@ def get_soup(link):
 
 
 def scoreboard_url(date):
+    year = year_from_date(date)
     date_string = datetime.strftime(date, '%m/%d/%Y')
     prefix = 'http://stats.ncaa.org/team/schedule_list?academic_year='
     suffix = '&division=1.0&sport_code=MBB&schedule_date='
 
-    return prefix+str(2014)+suffix+date_string
+    return prefix+str(year)+suffix+date_string
+
+def get_url(link_type, **kwargs):
+    if link_type == 'box':
+        link = 'http://stats.ncaa.org/game/index/3518684?org_id=6'
+    elif link_type == 'team':
+        year = kwargs['year']
+        year = str(get_ncaa_yearid(year))
+        teamid = kwargs['team']
+        link = 'http://stats.ncaa.org/team/index/'+year+'?org_id='+teamid
+
+    return link
+
+def get_ncaa_yearid(the_year):
+    year_dict = {2015: 12020, 2014: 11540, 2013: 11220}
+
+    return year_dict[the_year]
+
+
+def year_from_date(date):
+    month = date.month
+    if month > 9:
+        year = date.year + 1
+    else:
+        year = date.year
+
+    return year
 
 
 def get_largest_table(soup):

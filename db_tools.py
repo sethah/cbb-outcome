@@ -22,11 +22,18 @@ def get_teams(cur):
     return rows
 
 
-def team_exists(cur, team, col='ncaa'):
+def format_strings(string):
+    return string.replace("'", "&apos;")
+
+
+def team_exists(team, col='ncaa', cur=None):
+    if cur is None:
+        cur, conn = get_cursor()
+
     query = """SELECT %s
             FROM raw_teams
             WHERE %s = '%s'
-            """ % (col, col, team)
+            """ % (col, col, format_strings(team))
 
     cur.execute(query)
     result = cur.fetchone()
@@ -64,13 +71,14 @@ def store_box_row(row_dict):
                 """
 
 
-def insert_game(cur, val_dict):
-    
-    table = 'games'
+def insert_values(table_name, val_dict, cur=None):
+    if cur is None:
+        cur, conn = get_cursor()
+
     keys = val_dict.keys()
     values = [val_dict[k] for k in keys]
     sqlCommand = 'INSERT INTO {table} ({keys}) VALUES ({placeholders});'.format(
-      table = table,
+      table = table_name,
       keys = ', '.join(keys),
       placeholders = ', '.join([ "%s" for v in values ])  # extra quotes may not be necessary
     )
@@ -78,15 +86,22 @@ def insert_game(cur, val_dict):
     cur.execute(sqlCommand,values)
 
 
-def get_team_id(cur, team, col='ncaa'):
+def get_team_id(team, cur=None, col='ncaa'):
+    if cur is None:
+        cur, conn = get_cursor()
+
+    team = format_strings(team)
     query = """SELECT ncaaID
                FROM raw_teams
                WHERE %s = '%s'
             """ % (col, team)
 
     cur.execute(query)
-
-    return cur.fetchone()[0]
+    result = cur.fetchone()
+    if result is None:
+        return None
+    else:
+        return result[0]
 
 
 def create_tables(cur):
