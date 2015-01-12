@@ -120,6 +120,8 @@ def create_tables(cur):
         away_score INT         NOT NULL,
         home_first int         NOT NULL,
         away_first int         NOT NULL,
+        home_second int        NOT NULL,
+        away_second int        NOT NULL,
         neutral_site BOOLEAN   NOT NULL,
         officials text                 ,
         attendance INT                 ,

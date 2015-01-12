@@ -84,6 +84,13 @@ def year_from_date(date):
 
 
 def get_largest_table(soup):
+    if soup is None:
+        return None
+
+    tables = soup.findAll('table')
+    if len(tables) == 0:
+        return None
+
     largest_table = None
     max_rows = 0
     for table in soup.findAll('table'):

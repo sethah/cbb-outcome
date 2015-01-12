@@ -45,19 +45,23 @@ def get_teams_and_score(box_soup, game_dict):
 
     # store away team data
     away_tds = trs[1].findAll('td')
+    away_scores = get_score_by_half(away_tds)
     away_team = away_tds[0].get_text().strip()
     away_team_id = db_tools.get_team_id(str(away_team))
     game_dict['away_team'] = away_team_id
-    game_dict['away_first'] = int(away_tds[1].get_text().strip())
-    game_dict['away_score'] = int(away_tds[3].get_text().strip())
+    game_dict['away_first'] = away_scores[0]
+    game_dict['away_second'] = away_scores[1]
+    game_dict['away_score'] = away_scores[-1]
     
     # store home team data
     home_tds = trs[2].findAll('td')
+    home_scores = get_score_by_half(home_tds)
     home_team = home_tds[0].get_text().strip()
     home_team_id = db_tools.get_team_id(str(home_team))
     game_dict['home_team'] = home_team_id
-    game_dict['home_first'] = int(home_tds[1].get_text().strip())
-    game_dict['home_score'] = int(home_tds[3].get_text().strip())
+    game_dict['home_first'] = home_scores[0]
+    game_dict['home_second'] = home_scores[1]
+    game_dict['home_score'] = home_scores[-1]
 
     # determine the winner
     if game_dict['home_score'] > game_dict['away_score']:
@@ -68,13 +72,43 @@ def get_teams_and_score(box_soup, game_dict):
     return game_dict, home_team, away_team
 
 
+def get_score_by_half(tds):
+
+    scores = []
+    for td in tds:
+        try:
+            val = int(td.get_text().strip())
+        except:
+            continue
+
+        scores.append(val)
+
+    return scores
+
 def store_games(start_date, end_date):
+    big_ten = {'301', '306', '312', '418', '416', '428',
+               '463', '509', '539', '518', '559', '796'}
     day_count = (end_date - start_date).days + 1
 
     for single_date in (start_date + timedelta(n) for n in xrange(day_count)):
         date_string = datetime.strftime(single_date, '%m/%d/%Y')
         teams, box_link_list, missing_games = get_box_links(single_date)
-        
+
+        j = 0
+        new_teams = []
+        new_link_list = []
+        for team_pair in teams:
+            new_pair = [db_tools.get_team_id(team_pair[0]),
+                        db_tools.get_team_id(team_pair[1])]
+
+            if new_pair[0] in big_ten and new_pair[1] in big_ten:
+                new_teams.append(new_pair)
+                new_link_list.append(box_link_list[j])
+            j += 1
+
+        box_link_list = new_link_list
+        #print new_teams, new_link_list
+
         # write the missing games into a csv
         write_missing_links(missing_games)
 
@@ -97,9 +131,10 @@ def store_games(start_date, end_date):
 
 def store_game(link):
     this_game = {'home_team': '', 'away_team': '', 'home_outcome': '',
-                'home_score': 0, 'away_score': 0, 'neutral_site': False,
-                'officials': '', 'attendance': 0, 'venue': '',
-                'dt': None}
+                'home_score': 0, 'away_score': 0, 'home_first': 0,
+                'away_first': 0, 'home_second': 0, 'away_second': 0,
+                'neutral_site': False, 'officials': '', 'attendance': 0,
+                'venue': '', 'dt': None}
 
     soup = scrape.get_soup(link)
     if soup is None:
@@ -128,6 +163,10 @@ def store_game(link):
         elif type(e).__name__ == 'IntegrityError':
             # error storing game due to something else
             print 'This game already exists!\n'
+        else:
+            print traceback.format_exc()
+            print "Generic error, home team is: %s, and away team is: %s \n" \
+              % (this_game['home_team'], this_game['away_team'])
         conn.rollback()
         return False
 
@@ -214,7 +253,7 @@ def get_box_links(date):
                 teams.append(datetime.strftime(date, fmt))
                 missing_links.append(teams)
 
-    return teams, box_link_list, missing_links
+    return team_list, box_link_list, missing_links
 
 
 def get_box_rows(soup):
@@ -327,8 +366,8 @@ def write_missing_links(missing_games):
 
 
 def main():
-    start_date = datetime(2013, 11, 11).date()
-    end_date = datetime(2013, 11, 12).date()
+    start_date = datetime(2014, 3, 8).date()
+    end_date = datetime(2014, 3, 8).date()
     store_games(start_date, end_date)
     l = 'http://stats.ncaa.org/game/box_score/2694293'
     #store_game(l)
