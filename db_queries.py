@@ -140,6 +140,125 @@ def get_big_ten():
     return q
 
 
+def big_ten_games():
+    q = """CREATE TABLE big_ten AS
+           (SELECT * 
+           FROM games2
+           WHERE dt > timestamp '2013-12-30'::date);
+        """
+    return q
+
+def big_ten_stats():
+    q = """CREATE TABLE big_ten_stats AS
+           SELECT a.*
+           FROM box_stats a
+           JOIN big_ten b
+           ON a.gameid = b.id;
+        """
+    return q
+
+
+def box_advanced_stats():
+
+    prefix = """CREATE TABLE advanced_stats AS"""
+
+    opp = """opp AS
+             (SELECT
+                b.gameid,
+                a.teamid,
+                b.teamid as oppid
+              FROM big_ten_stats a
+              JOIN big_ten_stats b
+              ON a.gameid = b.gameid AND a.teamid != b.teamid),
+          """
+
+    pos = """pos AS
+            (SELECT 
+                gameid,
+                teamid,
+                fga - oreb + turnover + 0.475*fta AS pos
+             FROM big_ten_stats),
+          """
+    ppp = """ppp AS
+                (SELECT
+                    b.gameid,
+                    b.pts / p.pos AS ppp,
+                    b.teamid
+                 FROM big_ten_stats b
+                 JOIN pos p
+                 ON b.gameid = p.gameid AND b.teamid = p.teamid),
+          """
+    dppp = """dppp AS
+                (SELECT
+                    a.gameid,
+                    a.teamid,
+                    b.ppp as dppp
+                 FROM ppp a
+                 JOIN ppp b
+                 ON a.gameid = b.gameid AND a.teamid != b.teamid),
+          """
+    efg = """efg AS
+                (SELECT
+                    (fgm + 0.5*tpm) / fga AS efg,
+                    teamid,
+                    gameid
+                 FROM big_ten_stats),
+          """
+    ort = """ort AS
+                (SELECT
+                    CAST (oreb AS REAL) / (fga - fgm) AS ort,
+                    teamid,
+                    gameid
+                 FROM big_ten_stats),
+          """
+    topp = """topp AS
+                (SELECT
+                    b.gameid,
+                    b.turnover / p.pos AS topp,
+                    b.teamid
+                 FROM big_ten_stats b
+                 JOIN pos p
+                 ON b.gameid = p.gameid AND b.teamid = p.teamid)
+         """
+
+    suffix = '''SELECT pos.gameid, pos.teamid,
+                      (SELECT opp.oppid
+                          FROM opp 
+                          WHERE (opp.gameid = pos.gameid)
+                          AND (opp.teamid = pos.teamid)),
+                      (SELECT ppp.ppp 
+                          FROM ppp 
+                          WHERE (ppp.gameid = pos.gameid)
+                          AND (ppp.teamid = pos.teamid)),
+                      (SELECT dppp.dppp
+                          FROM dppp 
+                          WHERE (dppp.gameid = pos.gameid)
+                          AND (dppp.teamid = pos.teamid)),
+                      (SELECT efg.efg
+                          FROM efg 
+                          WHERE (efg.gameid = pos.gameid)
+                          AND (efg.teamid = pos.teamid)),
+                      (SELECT ort.ort
+                          FROM ort 
+                          WHERE (ort.gameid = pos.gameid)
+                          AND (ort.teamid = pos.teamid)),
+                      (SELECT topp.topp
+                          FROM topp 
+                          WHERE (topp.gameid = pos.gameid)
+                          AND (topp.teamid = pos.teamid)),
+                      pos.pos
+               FROM pos;
+            '''
+
+    q = prefix + '\nWITH ' + pos + '\n' + opp + '\n' + ppp + '\n' + \
+        dppp + '\n' +efg + '\n' + ort + '\n' + topp + '\n' \
+        + suffix
+    return q
+
+def agg_box_stats():
+    pass
+
+
 def show_results(results):
     for result in results:
         print ''
@@ -152,12 +271,15 @@ def main():
     cur, conn = db_tools.get_cursor()
     q = home_win_pct()
     q = get_big_ten()
+    q = box_advanced_stats()
+    #q = big_ten_stats()
+    print q
     #new_games_table(cur)
     cur.execute(q)
-    show_results(cur.fetchall())
+    #show_results(cur.fetchall())
     big_ten = {'301', '306', '312', '418', '416', '428',
                '463', '509', '539', '518', '559', '796'}
-    #conn.commit()
+    conn.commit()
     conn.close()
 
 

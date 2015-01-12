@@ -86,15 +86,15 @@ def insert_values(table_name, val_dict, cur=None):
     cur.execute(sqlCommand,values)
 
 
-def get_team_id(team, cur=None, col='ncaa'):
+def get_team_id(team, cur=None, col1 = 'ncaaid', col2='ncaa'):
     if cur is None:
         cur, conn = get_cursor()
 
     team = format_strings(team)
-    query = """SELECT ncaaID
+    query = """SELECT %s
                FROM raw_teams
                WHERE %s = '%s'
-            """ % (col, team)
+            """ % (col2, col1, team)
 
     cur.execute(query)
     result = cur.fetchone()
@@ -165,4 +165,4 @@ def main():
     conn.close()
 
 if __name__ == '__main__':
-      main()  
+      main()
