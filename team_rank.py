@@ -9,100 +9,120 @@ def team_rank(date):
     q = dbq.get_big_ten()
     cur.execute(q)
     result = cur.fetchall()
-    teams = {result[k][0]: k for k in xrange(len(result))}
+    team_indices = {result[k][0]: k for k in xrange(len(result))}
 
     q = """SELECT ppp, teamid, oppid FROM advanced_stats"""
     cur.execute(q)
     result = cur.fetchall()
-    #teams = {result[k][1]: k for k in xrange(len(result))}
-    nteams = len(teams)
-    print teams
-    raw_oe_dict = {team: {'oe': np.zeros(shape=(0,1)),
-                          'ind': np.zeros(shape=(0,1),dtype=int)} for team in teams}
+    nteams = len(team_indices)
 
-
+    raw_oe_mat = np.empty((1,nteams))
+    raw_oe_mat.fill(np.nan)
+    ind_mat = np.empty((1,nteams), dtype=int)
+    ind_mat.fill(np.nan)
     for game in result:
+        ppp = float(game[0])
         teamid = game[1]
         oppid = game[2]
-        raw_oe_dict[teamid]['oe'] = np.append(raw_oe_dict[teamid]['oe'], float(game[0]))
-        raw_oe_dict[teamid]['ind'] = np.append(raw_oe_dict[teamid]['ind'], teams[oppid])
-    for team in teams:
-        teamid = team
-        raw_oe_dict[teamid]['ind'] =  np.reshape(raw_oe_dict[teamid]['ind'],(raw_oe_dict[teamid]['ind'].shape[0],1))
-        raw_oe_dict[teamid]['oe'] =  np.reshape(raw_oe_dict[teamid]['oe'],(raw_oe_dict[teamid]['oe'].shape[0],1))
 
+        r, c = raw_oe_mat.shape
+        team_idx = team_indices[teamid]
+        opp_idx = team_indices[oppid]
+        last_entry = raw_oe_mat[r-1][team_idx]
+        if not np.isnan(last_entry):
+            # add a row
+            new_row = np.empty((1,c))
+            new_row.fill(np.nan)
+            raw_oe_mat = np.concatenate((raw_oe_mat, new_row), axis=0)
+            ind_mat = np.concatenate((ind_mat, new_row), axis=0)
+            raw_oe_mat[r][team_idx] = ppp
+            ind_mat[r][team_idx] = opp_idx
+        else:
+            non_nan = np.count_nonzero(~np.isnan(raw_oe_mat[:,team_idx]))
+            raw_oe_mat[non_nan][team_idx] = ppp
+            ind_mat[non_nan][team_idx] = opp_idx
 
-    avg_oe_vec = np.zeros(shape=(0,0))
-    for team in raw_oe_dict:
-        avg_oe_vec = np.append(avg_oe_vec, raw_oe_dict[team]['oe'])
-    avg_oe_all =  np.mean(avg_oe_vec)
-
-    q = """SELECT dppp, teamid FROM advanced_stats"""
+    q = """SELECT dppp, teamid, oppid FROM advanced_stats"""
     cur.execute(q)
     result = cur.fetchall()
 
-    raw_de_dict = {team: {'de': np.zeros(shape=(0,1)),
-                          'ind': np.zeros(shape=(0,1),dtype=int)} for team in teams}
-
+    raw_de_mat = np.empty((1,nteams))
+    raw_de_mat.fill(np.nan)
     for game in result:
+        ppp = float(game[0])
         teamid = game[1]
-        raw_de_dict[teamid]['de'] = np.append(raw_de_dict[teamid]['de'], float(game[0]))
-        raw_de_dict[teamid]['ind'] = np.append(raw_de_dict[teamid]['ind'], int(teams[teamid]))
-    for team in teams:
-        teamid = team
-        raw_de_dict[teamid]['ind'] =  np.reshape(raw_de_dict[teamid]['ind'],(raw_de_dict[teamid]['ind'].shape[0],1))
-        raw_de_dict[teamid]['de'] =  np.reshape(raw_de_dict[teamid]['de'],(raw_de_dict[teamid]['de'].shape[0],1))
-        #print raw_de_dict[teamid]['ind'].shape
-    
+        oppid = game[2]
+
+        r, c = raw_de_mat.shape
+        team_idx = team_indices[teamid]
+        opp_idx = team_indices[oppid]
+        last_entry = raw_de_mat[r-1][team_idx]
+        if not np.isnan(last_entry):
+            # add a row
+            new_row = np.empty((1,c))
+            new_row.fill(np.nan)
+            raw_de_mat = np.concatenate((raw_de_mat, new_row), axis=0)
+            raw_de_mat[r][team_idx] = ppp
+        else:
+            non_nan = np.count_nonzero(~np.isnan(raw_de_mat[:,team_idx]))
+            raw_de_mat[non_nan][team_idx] = ppp
 
 
-    avg_de_vec = np.zeros(shape=(0,0))
-    for team in raw_de_dict:
-        avg_de_vec = np.append(avg_de_vec, raw_de_dict[team]['de'])
-    avg_de_all =  np.mean(avg_oe_vec)
+    avg_oe_all =  np.nanmean(raw_oe_mat)
+    avg_de_all =  np.nanmean(raw_de_mat)
 
     # initialize adjusted vectors
     adj_oe = np.zeros(shape=(12,1))
-    for team in teams:
-        adj_oe[teams[team]][0] = np.mean(raw_oe_dict[team]['oe'])
+    for team, idx in team_indices.iteritems():
+        adj_oe[idx][0] = np.mean(raw_oe_mat[:,idx])
 
     adj_de = np.zeros(shape=(12,1))
-    for team in teams:
-        adj_de[teams[team]][0] = np.mean(raw_de_dict[team]['de'])
+    for team, idx in team_indices.iteritems():
+        adj_de[idx][0] = np.mean(raw_de_mat[:,idx])
 
     cnt = 0
     r_off_arr = []
     r_def_arr = []
     r_off = 1
     r_def = 1
-    while cnt < 100 and not(r_off < 0.0001 and r_def < 0.0001):
-        adj_de_prev = adj_de
-        adj_oe_prev = adj_oe
+    #print raw_de_dict
+    while cnt < 3 and not(r_off < 0.0001 and r_def < 0.0001):
+        adj_de_prev = adj_de*1
+        adj_oe_prev = adj_oe*1
 
-        for team in teams:
-            
-            #adj_de[raw_oe_dict[team]['ind']] = np.ravel(adj_de[raw_oe_dict[team]['ind']])
-            ind_oe = np.ravel(raw_oe_dict[team]['ind'])
-            adj_oe[teams[team]] = np.sum((raw_oe_dict[team]['oe'] / adj_de[ind_oe]) * avg_oe_all) / len(raw_oe_dict[team]['oe'])
-        for team in teams:
-            ind_de = np.ravel(raw_de_dict[team]['ind'])
-            adj_de[teams[team]] = np.sum((raw_de_dict[team]['de'] / adj_de[ind_de]) * avg_de_all) / len(raw_de_dict[team]['de'])
+        for team, idx in team_indices.iteritems():
+            ind_oe = ind_mat[:,idx]
+            ind_oe = ind_oe[~np.isnan(ind_oe)]
+            ind_oe = ind_oe.astype(int)
+            raw_oe_vec = raw_oe_mat[:,idx]
+            raw_oe_vec = raw_oe_vec[~np.isnan(raw_oe_vec)]
+            new_oe = np.nanmean((raw_oe_vec / adj_de[ind_oe]) * avg_oe_all)
+            adj_oe[idx] = new_oe
+
+        for team, idx in team_indices.iteritems():
+            ind_de = ind_mat[:,idx]
+            ind_de = ind_de[~np.isnan(ind_de)]
+            ind_de = ind_de.astype(int)
+            raw_de_vec = raw_de_mat[:,idx]
+            raw_de_vec = raw_de_vec[~np.isnan(raw_de_vec)]
+            new_de = np.nanmean((raw_de_vec / adj_de[ind_de]) * avg_de_all)
+            adj_de[idx] = new_de
+
 
         r_off = np.linalg.norm(adj_oe_prev - adj_oe)
-        r_def = np.linalg.norm(adj_oe_prev - adj_oe)
+        r_def = np.linalg.norm(adj_de_prev - adj_de)
 
         r_off_arr.append(r_off)
         r_def_arr.append(r_def)
 
         cnt += 1
 
-    #print r_def_arr
-    #print r_off_arr
+    print r_def_arr
+    print r_off_arr
 
     total_eff = adj_oe - adj_de
     l = ['']*nteams
-    for team in teams:
-        idx = teams[team]
+    for team, idx in team_indices.iteritems():
         l[idx] = team
     
     l = [db_tools.get_team_id(team,col1='ncaaid', col2='ncaa') for team in l]
