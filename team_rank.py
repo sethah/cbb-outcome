@@ -8,6 +8,7 @@ import db_queries as dbq
 def initialize(col_name, table_name):
     cur, conn = db_tools.get_cursor()
     q = dbq.get_big_ten()
+    q = """SELECT ncaaid, statsheet FROM raw_teams"""
     cur.execute(q)
     result = cur.fetchall()
     team_indices = {result[k][0]: k for k in xrange(len(result))}
@@ -19,7 +20,7 @@ def initialize(col_name, table_name):
 
     raw_mat = np.empty((1, nteams))
     raw_mat.fill(np.nan)
-    ind_mat = np.empty((1, nteams), dtype=int)
+    ind_mat = np.empty((1, nteams))
     ind_mat.fill(np.nan)
     for game in result:
         val = float(game[0])
@@ -49,7 +50,7 @@ def initialize(col_name, table_name):
 
 
 def convert_index(ind_arr):
-    
+
     ind_arr = ind_arr[~np.isnan(ind_arr)]
     ind_arr = ind_arr.astype(int)
 
@@ -69,9 +70,11 @@ def team_rank(date):
     # get all the big ten teams
     cur, conn = db_tools.get_cursor()
     q = dbq.get_big_ten()
+    q = """SELECT ncaaid, statsheet FROM raw_teams"""
     cur.execute(q)
     result = cur.fetchall()
     team_indices = {result[k][0]: k for k in xrange(len(result))}
+    nteams = len(team_indices)
 
     # get matrices of the
     raw_oe_mat, ind_mat, nteams = initialize('ppp', 'advanced_stats')
@@ -82,8 +85,8 @@ def team_rank(date):
     avg_de_all = np.nanmean(raw_de_mat)
 
     # initialize adjusted vectors to average of raw efficiency
-    adj_oe = np.zeros(shape=(12, 1))
-    adj_de = np.zeros(shape=(12, 1))
+    adj_oe = np.zeros(shape=(nteams, 1))
+    adj_de = np.zeros(shape=(nteams, 1))
     for team, idx in team_indices.iteritems():
         adj_oe[idx][0] = np.nanmean(raw_oe_mat[:, idx])
         adj_de[idx][0] = np.nanmean(raw_de_mat[:, idx])
@@ -94,7 +97,7 @@ def team_rank(date):
     r_off = 1
     r_def = 1
     tol = 0.0001
-    max_cnt = 2
+    max_cnt = 4
     while cnt < max_cnt and not(r_off < tol and r_def < tol):
         # keep the previous vectors to calculate residuals
         adj_de_prev = adj_de*1
@@ -110,6 +113,7 @@ def team_rank(date):
             # strip out nan values
             ind_oe = ind_mat[:, idx]
             ind_oe = convert_index(ind_oe)
+            #print db_tools.get_team_id(team, col1='ncaaid', col2='ncaa')
             ind_de = convert_index(ind_oe)
             raw_oe_vec = raw_oe_vec[~np.isnan(raw_oe_vec)]
             raw_oe_vec = raw_oe_vec.reshape(len(raw_oe_vec),1)

@@ -167,8 +167,8 @@ def box_advanced_stats():
                 b.gameid,
                 a.teamid,
                 b.teamid as oppid
-              FROM big_ten_stats a
-              JOIN big_ten_stats b
+              FROM box_stats a
+              JOIN box_stats b
               ON a.gameid = b.gameid AND a.teamid != b.teamid),
           """
 
@@ -177,14 +177,14 @@ def box_advanced_stats():
                 gameid,
                 teamid,
                 fga - oreb + turnover + 0.475*fta AS pos
-             FROM big_ten_stats),
+             FROM box_stats),
           """
     ppp = """ppp AS
                 (SELECT
                     b.gameid,
                     b.pts / p.pos AS ppp,
                     b.teamid
-                 FROM big_ten_stats b
+                 FROM box_stats b
                  JOIN pos p
                  ON b.gameid = p.gameid AND b.teamid = p.teamid),
           """
@@ -202,21 +202,21 @@ def box_advanced_stats():
                     (fgm + 0.5*tpm) / fga AS efg,
                     teamid,
                     gameid
-                 FROM big_ten_stats),
+                 FROM box_stats),
           """
     ort = """ort AS
                 (SELECT
                     CAST (oreb AS REAL) / (fga - fgm) AS ort,
                     teamid,
                     gameid
-                 FROM big_ten_stats),
+                 FROM box_stats),
           """
     topp = """topp AS
                 (SELECT
                     b.gameid,
                     b.turnover / p.pos AS topp,
                     b.teamid
-                 FROM big_ten_stats b
+                 FROM box_stats b
                  JOIN pos p
                  ON b.gameid = p.gameid AND b.teamid = p.teamid)
          """
@@ -255,8 +255,16 @@ def box_advanced_stats():
         + suffix
     return q
 
-def agg_box_stats():
-    pass
+def calc_box_stats(cur, teamid, date):
+    q = """SELECT g.dt, b.teamid
+           FROM box_stats b
+           JOIN games g
+           ON b.gameid = g.id
+           AND (b.teamid = '%s')
+           AND g.dt < '%s'
+           ;
+        """ % (teamid, datetime.strftime(date, '%Y-%m-%d'))
+    cur.execute(q)
 
 
 def show_results(results):
@@ -268,14 +276,20 @@ def show_results(results):
 
 
 def main():
+    
     cur, conn = db_tools.get_cursor()
     q = home_win_pct()
     q = get_big_ten()
     q = box_advanced_stats()
+    q = calc_box_stats('306', date(2013, 12, 12))
+    cur.execute(q)
+    show_results(cur.fetchall())
+    return None
+    #q = new_games_table(cur)
     #q = big_ten_stats()
     print q
     #new_games_table(cur)
-    cur.execute(q)
+    #cur.execute(q)
     #show_results(cur.fetchall())
     big_ten = {'301', '306', '312', '418', '416', '428',
                '463', '509', '539', '518', '559', '796'}

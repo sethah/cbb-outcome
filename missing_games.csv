@@ -1,5 +1,4 @@
-St. Bonaventure,Binghamton,12/20/2014
-Niagara,Buffalo,12/19/2014
+Team1,Team2,Date
 Bryant,Gonzaga,11/09/2013
 Cal St. Fullerton,Montana St.,11/09/2013
 Binghamton,Brown,11/10/2013
@@ -8,18 +7,62 @@ Harvard,Holy Cross,11/10/2013
 Belmont,Richmond,11/11/2013
 Ga. Southern,Miami (FL),11/11/2013
 Presbyterian,Citadel,11/12/2013
-Bryant,Gonzaga,11/09/2013
-Cal St. Fullerton,Montana St.,11/09/2013
-Bryant,Gonzaga,11/09/2013
-Cal St. Fullerton,Montana St.,11/09/2013
-Binghamton,Brown,11/10/2013
-Charleston So.,Delaware,11/10/2013
-Harvard,Holy Cross,11/10/2013
-Belmont,Richmond,11/11/2013
-Ga. Southern,Miami (FL),11/11/2013
-Presbyterian,Citadel,11/12/2013
-Col. of Charleston,Citadel,12/29/2013
-North Dakota,Northern Colo.,12/29/2013
+Bryant,Dartmouth,11/13/2013
+Indiana St.,Belmont,11/14/2013
+Howard,Harvard,11/15/2013
+Vermont,Bryant,11/16/2013
+Belmont,North Carolina,11/17/2013
+Charleston So.,New Mexico,11/17/2013
+Eastern Wash.,Washington,11/17/2013
+Citadel,Tennessee,11/18/2013
+Lipscomb,Belmont,11/20/2013
+Bryant,Harvard,11/20/2013
+Charleston So.,Baylor,11/20/2013
+Northern Colo.,New Mexico St.,11/20/2013
+Citadel,Wake Forest,11/21/2013
+Northern Colo.,Colorado St.,11/22/2013
+Belmont,Holy Cross,11/23/2013
+Eastern Wash.,LIU Brooklyn,11/23/2013
+Bryant,New Hampshire,11/24/2013
+Eastern Wash.,UC Irvine,11/24/2013
+Harvard,Colorado,11/24/2013
+St. Bonaventure,Southern Ill.,11/25/2013
+Incarnate Word,North Texas,11/26/2013
+Brown,Bryant,11/27/2013
+Citadel,Towson,11/29/2013
+Bethune-Cookman,Northern Colo.,11/30/2013
+VCU,Belmont,12/01/2013
+Prairie View,Northern Colo.,12/01/2013
+Belmont,Middle Tenn.,12/03/2013
+Delaware,Charleston So.,12/03/2013
+Bryant,Yale,12/04/2013
+Citadel,Navy,12/04/2013
+Brown,American,12/07/2013
+North Dakota St.,Bryant,12/07/2013
+St. Bonaventure,Buffalo,12/07/2013
+Bryant,Notre Dame,12/09/2013
+Albany (NY),Brown,12/10/2013
+Bryant,Ohio St.,12/11/2013
+Belmont,South Dakota St.,12/14/2013
+Navy,Bryant,12/14/2013
+Charleston So.,Alabama,12/14/2013
+UC Irvine,Eastern Wash.,12/15/2013
+Belmont,Denver,12/17/2013
+St. Bonaventure,Wake Forest,12/17/2013
+Charleston So.,Western Caro.,12/18/2013
+Kennesaw St.,Ga. Southern,12/18/2013
+Ga. Southern,Georgia St.,12/20/2013
+Bryant,Delaware,12/21/2013
+Charleston So.,Central Ark.,12/21/2013
+Citadel,Nebraska,12/21/2013
+Sacramento St.,Cal St. Fullerton,12/21/2013
+Eastern Wash.,Seton Hall,12/22/2013
+Northern Colo.,Wyoming,12/22/2013
+Binghamton,Buffalo,12/23/2013
+Belmont,Indiana St.,12/28/2013
+Bryant,Binghamton,12/28/2013
+Ga. Southern,N.C. A&T,12/28/2013
+Harvard,Fordham,12/28/2013
 Col. of Charleston,Citadel,12/29/2013
 North Dakota,Northern Colo.,12/29/2013
 Lehigh,Bryant,12/30/2013
@@ -97,100 +140,3 @@ Incarnate Word,Northwestern St.,01/30/2014
 Northern Colo.,Portland St.,01/30/2014
 Idaho St.,Sacramento St.,01/30/2014
 Cornell,Brown,01/31/2014
-Belmont,Tennessee Tech,02/01/2014
-Columbia,Brown,02/01/2014
-Liberty,Charleston So.,02/01/2014
-North Dakota St.,Denver,02/01/2014
-Penn,Harvard,02/01/2014
-Incarnate Word,Stephen F. Austin,02/01/2014
-Northern Colo.,Eastern Wash.,02/01/2014
-Weber St.,Sacramento St.,02/01/2014
-Bryant,Sacred Heart,02/02/2014
-Ball St.,Buffalo,02/05/2014
-Radford,Charleston So.,02/05/2014
-St. Bonaventure,Richmond,02/05/2014
-Murray St.,Belmont,02/06/2014
-Citadel,Appalachian St.,02/06/2014
-Eastern Wash.,Montana St.,02/06/2014
-Northern Colo.,Idaho St.,02/06/2014
-Murray St.,Belmont,02/06/2014
-Citadel,Appalachian St.,02/06/2014
-Eastern Wash.,Montana St.,02/06/2014
-Northern Colo.,Idaho St.,02/06/2014
-Brown,Harvard,02/07/2014
-Austin Peay,Belmont,02/08/2014
-Wofford,Citadel,02/08/2014
-Eastern Wash.,Montana,02/08/2014
-Houston Baptist,Incarnate Word,02/08/2014
-Northern Colo.,Weber St.,02/08/2014
-Dayton,St. Bonaventure,02/08/2014
-Murray St.,Belmont,02/06/2014
-Citadel,Appalachian St.,02/06/2014
-Eastern Wash.,Montana St.,02/06/2014
-Northern Colo.,Idaho St.,02/06/2014
-Brown,Harvard,02/07/2014
-Austin Peay,Belmont,02/08/2014
-Wofford,Citadel,02/08/2014
-Eastern Wash.,Montana,02/08/2014
-Houston Baptist,Incarnate Word,02/08/2014
-Northern Colo.,Weber St.,02/08/2014
-Dayton,St. Bonaventure,02/08/2014
-Southern Utah,Sacramento St.,02/10/2014
-Tennessee St.,Belmont,02/13/2014
-Sacramento St.,Eastern Wash.,02/13/2014
-Montana,Northern Colo.,02/13/2014
-Princeton,Brown,02/14/2014
-Harvard,Columbia,02/14/2014
-Penn,Brown,02/15/2014
-Hawaii,Cal St. Fullerton,02/15/2014
-Winthrop,Charleston So.,02/15/2014
-Citadel,Furman,02/15/2014
-Northern Ariz.,Eastern Wash.,02/15/2014
-Montana St.,Northern Colo.,02/15/2014
-Sacramento St.,Portland St.,02/15/2014
-Akron,Buffalo,02/19/2014
-Charleston So.,UNC Asheville,02/19/2014
-Duquesne,St. Bonaventure,02/19/2014
-Brown,Columbia,02/21/2014
-Harvard,Penn,02/21/2014
-Brown,Cornell,02/22/2014
-Buffalo,Kent St.,02/22/2014
-Charleston So.,Presbyterian,02/22/2014
-Eastern Wash.,Southern Utah,02/22/2014
-Northern Colo.,Sacramento St.,02/22/2014
-Rhode Island,St. Bonaventure,02/22/2014
-Cal St. Fullerton,UC Santa Barbara,02/22/2014
-Samford,Citadel,02/24/2014
-Portland St.,Eastern Wash.,02/24/2014
-St. Bonaventure,La Salle,02/26/2014
-Bryant,St. Francis Brooklyn,02/27/2014
-Incarnate Word,McNeese St.,02/27/2014
-Eastern Wash.,Northern Colo.,02/27/2014
-Sacramento St.,Weber St.,02/27/2014
-Brown,Penn,02/28/2014
-Belmont,Jacksonville St.,03/01/2014
-Brown,Princeton,03/01/2014
-Bryant,LIU Brooklyn,03/01/2014
-Ga. Southern,Citadel,03/01/2014
-Denver,North Dakota St.,03/01/2014
-Eastern Wash.,North Dakota,03/01/2014
-Columbia,Harvard,03/01/2014
-Incarnate Word,Nicholls St.,03/01/2014
-Portland St.,Northern Colo.,03/01/2014
-Sacramento St.,Idaho St.,03/01/2014
-Buffalo,Akron,03/04/2014
-Northern Colo.,North Dakota,03/04/2014
-Idaho St.,Eastern Wash.,03/06/2014
-Hawaii,UC Santa Barbara,03/06/2014
-Harvard,Brown,03/08/2014
-Cal St. Fullerton,Hawaii,03/08/2014
-Weber St.,Eastern Wash.,03/08/2014
-Northern Colo.,Southern Utah,03/08/2014
-Montana St.,Sacramento St.,03/08/2014
-St. Bonaventure,VCU,03/08/2014
-Harvard,Brown,03/08/2014
-Cal St. Fullerton,Hawaii,03/08/2014
-Weber St.,Eastern Wash.,03/08/2014
-Northern Colo.,Southern Utah,03/08/2014
-Montana St.,Sacramento St.,03/08/2014
-St. Bonaventure,VCU,03/08/2014
