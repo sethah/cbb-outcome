@@ -382,8 +382,8 @@ def drop_duplicate_missing_games(fname):
 
 
 def main():
-    start_date = datetime(2014, 1, 11).date()
-    end_date = datetime(2014, 1, 31).date()
+    start_date = datetime(2014, 2, 21).date()
+    end_date = datetime(2014, 3, 10).date()
     store_games(start_date, end_date)
     l = 'http://stats.ncaa.org/game/box_score/2694293'
     #store_game(l)

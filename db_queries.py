@@ -2,6 +2,9 @@ import psycopg2
 import psycopg2.extras
 from datetime import datetime, date
 import db_tools
+import matplotlib.pyplot as plt
+import pandas as pd
+
 
 
 def show_games():
@@ -266,6 +269,49 @@ def calc_box_stats(cur, teamid, date):
         """ % (teamid, datetime.strftime(date, '%Y-%m-%d'))
     cur.execute(q)
 
+    """SELECT CAST(SUM(pts) / COUNT(pts) AS REAL) as ppg,
+              COUNT(pts) as cnt,
+              teamid
+       FROM box_stats
+       GROUP BY teamid;
+    """
+    """SELECT AVG(a.cnt)
+       FROM (SELECT COUNT(*) cnt FROM box_stats GROUP BY teamid) a
+       ;
+    """
+    """SELECT COUNT(*)
+       FROM (SELECT COUNT(*) cnt FROM box_stats GROUP BY teamid) a
+       WHERE a.cnt > 13;
+    """
+    """CREATE TABLE advanced_stats2 AS
+       (SELECT *
+       FROM advanced_stats a
+       JOIN (SELECT COUNT(*) cnt, r.ncaaid 
+             FROM box_stats b
+             JOIN raw_teams r
+             ON r.ncaaid = b.teamid
+             GROUP BY r.ncaaid
+             ORDER BY cnt) ngames
+       ON a.teamid = ngames.ncaaid);
+
+       ;
+    """
+
+def hist():
+    cur, conn = db_tools.get_cursor()
+    q = '''SELECT SUM(pts) / COUNT(pts) ppg, r.ncaa 
+         FROM box_stats b
+         JOIN raw_teams r
+         ON r.ncaaid = b.teamid
+         GROUP BY r.ncaa
+         ORDER BY ppg;'''
+
+    df = pd.read_sql(q, conn)
+
+    plt.hist(df['ppg'])
+    plt.show()
+
+    conn.close()
 
 def show_results(results):
     for result in results:
@@ -276,7 +322,8 @@ def show_results(results):
 
 
 def main():
-    
+    hist()
+    return None
     cur, conn = db_tools.get_cursor()
     q = home_win_pct()
     q = get_big_ten()

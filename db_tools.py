@@ -103,14 +103,20 @@ def get_team_id(team, cur=None, col1 = 'ncaaid', col2='ncaa'):
     else:
         return result[0]
 
+def create_table(cur, table_name, query, drop=False):
+    if drop:
+        cur.execute("""DROP TABLE IF EXISTS '%s';""" % table_name)
 
-def create_tables(cur):
-    print list_tables(cur)
+    cur.execute(query)
 
-    cur.execute("""DROP TABLE IF EXISTS box_stats;""")
-    cur.execute("""DROP TABLE IF EXISTS games;""")
+def create_tables():
+    #print list_tables(cur)
 
-    create_games = """CREATE TABLE games
+    #cur.execute("""DROP TABLE IF EXISTS box_stats;""")
+    #cur.execute("""DROP TABLE IF EXISTS games;""")
+    q_dict = {}
+
+    q_dict['games'] = """CREATE TABLE games
     (
         ID SERIAL PRIMARY KEY  NOT NULL,
         home_team text         NOT NULL,
@@ -129,7 +135,7 @@ def create_tables(cur):
         dt DATE                NOT NULL,
         UNIQUE(home_team, away_team, dt)
     );"""
-    create_box = """CREATE TABLE box_stats
+    q_dict['box_stats'] = """CREATE TABLE box_stats
     (
         ID SERIAL PRIMARY KEY     NOT NULL,
         gameid int NOT NULL REFERENCES games(ID),
@@ -151,15 +157,26 @@ def create_tables(cur):
         turnover int                   ,
         pf int                          
     );"""
-    cur.execute(create_games)
-    cur.execute(create_box)
-    print list_tables(cur)
+    q_dict['teams'] = """CREATE TABLE teams
+    (
+        ncaaid int PRIMARY KEY NOT NULL,
+        statsheet text                 ,
+        ncaa text                      ,
+        kenpom text                    ,
+        espn text                      ,
+        cbs1 text                      ,
+        cbs2 text                        
+    );"""
+    
+    return q_dict
 
 
 def main():
     cur, conn = get_cursor()
     #insert_game(cur,this_game)
-    create_tables(cur)
+    #create_tables(cur)
+    q_dict = create_tables()
+    create_table(cur, 'teams', q_dict['teams'])
     #team_exists(cur, 'Indiana')
     conn.commit()
     conn.close()

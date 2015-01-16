@@ -14,7 +14,7 @@ def initialize(col_name, table_name):
     team_indices = {result[k][0]: k for k in xrange(len(result))}
     nteams = len(team_indices)
 
-    q = """SELECT %s, teamid, oppid FROM %s""" % (col_name, table_name)
+    q = """SELECT %s, teamid, oppid FROM %s WHERE cnt > 5""" % (col_name, table_name)
     cur.execute(q)
     result = cur.fetchall()
 
@@ -57,6 +57,8 @@ def convert_index(ind_arr):
     return ind_arr
 
 def weights(n, wtype='linear'):
+    if n == 0: 
+        return np.array([1])
     if wtype == 'linear':
         w = np.array(xrange(1, n+1))
         w =  w*(1/float(w.sum()))
@@ -77,8 +79,8 @@ def team_rank(date):
     nteams = len(team_indices)
 
     # get matrices of the
-    raw_oe_mat, ind_mat, nteams = initialize('ppp', 'advanced_stats')
-    raw_de_mat, ind_mat, nteams = initialize('dppp', 'advanced_stats')
+    raw_oe_mat, ind_mat, nteams = initialize('ppp', 'advanced_stats2')
+    raw_de_mat, ind_mat, nteams = initialize('dppp', 'advanced_stats2')
 
     # get the national averages
     avg_oe_all = np.nanmean(raw_oe_mat)
@@ -97,7 +99,7 @@ def team_rank(date):
     r_off = 1
     r_def = 1
     tol = 0.0001
-    max_cnt = 4
+    max_cnt = 7
     while cnt < max_cnt and not(r_off < tol and r_def < tol):
         # keep the previous vectors to calculate residuals
         adj_de_prev = adj_de*1
@@ -109,7 +111,7 @@ def team_rank(date):
             raw_de_vec = raw_de_mat[:, idx]
             raw_oe_vec = raw_oe_mat[:, idx]
             
-
+            
             # strip out nan values
             ind_oe = ind_mat[:, idx]
             ind_oe = convert_index(ind_oe)
@@ -123,7 +125,8 @@ def team_rank(date):
             
             w = weights(length, '')
             #print w
-
+            if team == '104':
+                print [(raw_oe_vec[k], adj_de[ind_oe][k]) for k in xrange(len(raw_oe_vec))]
             # get new efficiency for the team, using equal weights
             new_oe = np.sum(((raw_oe_vec / adj_de[ind_oe]) * w) * avg_oe_all)
             new_de = np.sum(((raw_de_vec / adj_oe[ind_oe]) * w) * avg_de_all)
@@ -139,9 +142,9 @@ def team_rank(date):
 
         cnt += 1
 
-    # print r_def_arr
+    print r_def_arr
     # print r_off_arr
-
+    return None
     total_eff = adj_oe - adj_de
     l = ['']*nteams
     for team, idx in team_indices.iteritems():
