@@ -8,6 +8,7 @@ class Query(object):
 
     def __init__(self):
         self.query = ''
+        self.get_cursor()
 
     def get_cursor(self, cursor_type=None):
         conn = psycopg2.connect(database="seth", user="seth", password="abc123",
@@ -17,32 +18,31 @@ class Query(object):
         else:
             cur = conn.cursor()
 
-        return cur, conn
+        self.cursor = cur
+        self.conn = conn
 
     def execute(self, conn=None, cur=None, commit=False, limit=0):
-        if conn is None:
-            cur, conn = self.get_cursor()
-
         if limit != 0:
             # add a limit statement to the end of query
             self.query = self.query.replace(';', '')
             self.query += ' LIMIT %d' % limit
 
         try:
-            cur.execute(self.query)
+            self.cursor.execute(self.query)
             if commit:
-                conn.commit()
+                self.conn.commit()
         except:
             print 'Error executing query'
-            conn.rollback()
+            print self.query
+            self.conn.rollback()
 
         # fetch results if there are some
         try:
-            self.results = cur.fetchall()
+            self.results = self.cursor.fetchall()
         except psycopg2.ProgrammingError:
             pass
 
-        conn.close()
+        #self.conn.close()
 
     def show_results(self):
         for result in self.results:
@@ -112,7 +112,7 @@ class Query(object):
                     SUM(b.turnover) as turnover,
                     SUM(b.pf) as pf,
                     COUNT(b.teamid) ngames,
-                    b.teamid,
+                    b.teamid
                 FROM box_stats b
                 JOIN games g
                 ON g.id = b.gameid AND (g.dt BETWEEN '%s' AND '%s')
@@ -120,6 +120,15 @@ class Query(object):
             """ % (date_seq, datetime.strftime(start_date, '%Y-%m-%d'), date_string)
         self.query = q
 
+    def kenpom(self, year):
+        q = """SELECT k.adjoe, k.adjde, k.ncaaid, r.statsheet
+               FROM kenpom k
+               JOIN raw_teams r
+               ON r.ncaaid = k.ncaaid
+               WHERE year = %s
+            """ % year
+
+        self.query = q
     def get_min_date(self, dt):
         if dt.month < 6:
             year = dt.year - 1
@@ -127,6 +136,33 @@ class Query(object):
             year = dt.year
 
         return date(year, 9, 1)
+
+    def insert_values(self, table_name, val_dict):
+
+        keys = val_dict.keys()
+        values = [val_dict[k] for k in keys]
+        sqlCommand = 'INSERT INTO {table} ({keys}) VALUES ({placeholders});'.format(
+          table = table_name,
+          keys = ', '.join(keys),
+          placeholders = ', '.join([ "%s" for v in values ])
+        )
+
+        self.cursor.execute(sqlCommand, values)
+        self.conn.commit()
+        #self.conn.close()
+
+    def adjusted_stats(self, the_date):
+        date_string = datetime.strftime(the_date, '%Y-%m-%d')
+        date_seq = datetime.strftime(the_date, '%Y%m%d')
+        q = """CREATE TABLE adjusted_stats_%s
+                (
+                    id serial PRIMARY KEY  NOT NULL,
+                    statsheet text NOT NULL,
+                    adjoe real                     ,
+                    adjde real                       
+                );""" % date_seq
+        print q
+        self.query = q
 
     def box_advanced_stats(self, new_table='advanced_stats',
                            stats_table='box_stats'):
@@ -227,10 +263,11 @@ class Query(object):
 
 def main():
     q = Query()
-    # q.aggregate_box(date(2013, 12, 1))
+    # q.box_stats(date(2014, 2, 1))
     # q.execute(commit=True)
+    # print q.query
     # return None
-    the_date = date(2013, 12, 1)
+    the_date = date(2014, 2, 1)
     date_seq = datetime.strftime(the_date, '%Y%m%d')
     q.box_advanced_stats('advanced_stats_%s' % date_seq,'box_stats_%s' % date_seq)
     #q.box_stats(the_date)

@@ -90,7 +90,7 @@ def get_team_id(team, cur=None, col1 = 'ncaaid', col2='ncaa'):
     if cur is None:
         cur, conn = get_cursor()
 
-    team = format_strings(team)
+    # team = format_strings(team)
     query = """SELECT %s
                FROM raw_teams
                WHERE %s = '%s'

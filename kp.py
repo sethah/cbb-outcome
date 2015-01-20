@@ -48,9 +48,9 @@ def kp_to_sql(year):
 
 
 def main():
-    years = range(2007,2014)
-    for year in years:
-        kp_to_sql(str(year))
+    # years = range(2007,2014)
+    # for year in years:
+    #     kp_to_sql(str(year))
     return None
 
 
