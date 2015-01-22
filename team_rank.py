@@ -1,17 +1,17 @@
 import numpy as np
-import psycopg2
-import psycopg2.extras
 import db_tools
-import db_queries as dbq
 from queries import Query
 import scrape_tools as scrape
-from datetime import date, datetime
+from datetime import datetime, timedelta, date
+from itertools import izip
+
 
 class Adjusted(object):
 
     def __init__(self, dt, query):
         self.dt = dt
         self.date_seq = datetime.strftime(dt, '%Y%m%d')
+        self.date_string = datetime.strftime(dt, '%Y-%m-%d')
         self.query = query
 
     def box_stats(self):
@@ -19,11 +19,13 @@ class Adjusted(object):
         self.query.execute(commit=True)
 
     def drop_box(self):
-        self.query.query = """DROP TABLE IF EXISTS box_stats_%s""" % self.date_seq
+        self.query.query = """DROP TABLE IF EXISTS box_stats_%s""" \
+        % self.date_seq
         self.query.execute(commit=True)
 
     def drop_advanced(self):
-        self.query.query = """DROP TABLE IF EXISTS advanced_stats_%s""" % self.date_seq
+        self.query.query = """DROP TABLE IF EXISTS advanced_stats_%s""" \
+        % self.date_seq
         self.query.execute(commit=True)
 
     def advanced_stats(self):
@@ -34,47 +36,62 @@ class Adjusted(object):
     def team_index(self):
         self.query.query = """SELECT ncaaid, statsheet FROM raw_teams"""
         self.query.execute()
-        
-        self.team_indices = {self.query.results[k][1]: k for k in xrange(len(self.query.results))}
+
+        self.team_indices = {self.query.results[k][1]: k
+                             for k in xrange(len(self.query.results))}
         self.nteams = len(self.team_indices)
 
-    def initialize(self, col_name):
+    def initialize(self):
         self.team_index()
 
-        self.query.query = """SELECT %s, teamid, oppid FROM advanced_stats_%s""" % (col_name, self.date_seq)
+        self.query.query = """WITH ppp AS
+                                (SELECT pts / (0.96*(fga - oreb + turnover + (0.475*fta))) as ppp, 
+                                    gameid, 
+                                    teamid, 
+                                    statsheet,
+                                    g.dt
+                                FROM detailed_box
+                                JOIN games g
+                                ON g.id = detailed_box.gameid AND (g.dt BETWEEN '%s' AND '%s'))
+            
+
+                              SELECT ppp.*,
+                                    dppp.ppp as dppp,
+                                    dppp.teamid as oppid,
+                                    dppp.statsheet AS opp
+                              FROM ppp
+                              JOIN ppp AS dppp
+                              ON ppp.teamid != dppp.teamid
+                              AND ppp.gameid = dppp.gameid;
+                           """ % (self.query.get_min_date(self.dt), self.date_string)
+
         self.query.execute()
 
-        raw_mat = np.empty((1, self.nteams))
-        raw_mat.fill(np.nan)
-        ind_mat = np.empty((1, self.nteams))
+        raw_oe_mat = np.empty((40, self.nteams))
+        raw_de_mat = np.empty((40, self.nteams))
+        raw_oe_mat.fill(np.nan)
+        raw_de_mat.fill(np.nan)
+        ind_mat = np.empty((40, self.nteams))
         ind_mat.fill(np.nan)
+
         for game in self.query.results:
-            val = float(game[0])
-            teamid = int(game[1])
-            oppid = int(game[2])
+            ppp = float(game[0])
+            dppp = float(game[5])
+            team = game[3]
+            opp = game[7]
 
-            r, c = raw_mat.shape
-            team_idx = self.team_indices[teamid]
-            opp_idx = self.team_indices[oppid]
-            last_entry = raw_mat[r - 1][team_idx]
-            if not np.isnan(last_entry):
-                # add a row
-                new_row = np.empty((1, c))
-                new_row.fill(np.nan)
-                raw_mat = np.concatenate((raw_mat, new_row), axis=0)
-                ind_mat = np.concatenate((ind_mat, new_row), axis=0)
-                raw_mat[r][team_idx] = val
-                ind_mat[r][team_idx] = opp_idx
-            else:
-                non_nan = np.count_nonzero(~np.isnan(raw_mat[:, team_idx]))
-                raw_mat[non_nan][team_idx] = val
-                ind_mat[non_nan][team_idx] = opp_idx
+            r, c = raw_oe_mat.shape
+            team_idx = self.team_indices[team]
+            opp_idx = self.team_indices[opp]
+            last_entry = raw_oe_mat[r - 1][team_idx]
 
+            non_nan_oe = np.count_nonzero(~np.isnan(raw_oe_mat[:, team_idx]))
+            non_nan_de = np.count_nonzero(~np.isnan(raw_de_mat[:, team_idx]))
+            raw_oe_mat[non_nan_oe][team_idx] = ppp
+            raw_de_mat[non_nan_de][team_idx] = dppp
+            ind_mat[non_nan_oe][team_idx] = opp_idx
 
-        # conn.close()
-
-        return raw_mat, ind_mat, self.nteams
-
+        return raw_oe_mat, raw_de_mat, ind_mat, self.nteams
 
     def preseason_rank(self, team_indices):
         preseason_oe = np.zeros((self.nteams, 1))
@@ -92,7 +109,6 @@ class Adjusted(object):
 
         return preseason_oe, preseason_de
 
-
     def convert_index(self, ind_arr):
 
         ind_arr = ind_arr[~np.isnan(ind_arr)]
@@ -100,12 +116,13 @@ class Adjusted(object):
 
         return ind_arr
 
-
     def team_rank(self):
 
         # get matrices of the
-        raw_oe_mat, ind_mat, nteams = self.initialize('ppp')
-        raw_de_mat, ind_mat, nteams = self.initialize('dppp')
+        raw_oe_mat, raw_de_mat, ind_mat, nteams = self.initialize()
+
+        # return None
+        # raw_de_mat, ind_mat, nteams = self.initialize('dppp')
         preseason_oe, preseason_de = self.preseason_rank(self.team_indices)
 
         # get the national averages
@@ -115,7 +132,7 @@ class Adjusted(object):
         # initialize adjusted vectors to average of raw efficiency
         adj_oe = np.zeros(shape=(self.nteams, 1))
         adj_de = np.zeros(shape=(self.nteams, 1))
-        for team, idx in team_indices.iteritems():
+        for team, idx in self.team_indices.iteritems():
             adj_oe[idx][0] = np.nanmean(raw_oe_mat[:, idx])
             adj_de[idx][0] = np.nanmean(raw_de_mat[:, idx])
 
@@ -137,27 +154,21 @@ class Adjusted(object):
                 if preseason_oe[idx] < 0.01:
                     preseason_oe[idx] = avg_oe_all
 
-
                 # get the team's raw efficiency vectors
                 raw_de_vec = raw_de_mat[:, idx]
                 raw_oe_vec = raw_oe_mat[:, idx]
-                
-                
+
                 # strip out nan values
                 ind_oe = ind_mat[:, idx]
                 ind_oe = self.convert_index(ind_oe)
                 ind_de = self.convert_index(ind_oe)
                 raw_oe_vec = raw_oe_vec[~np.isnan(raw_oe_vec)]
-                raw_oe_vec = raw_oe_vec.reshape(len(raw_oe_vec),1)
+                raw_oe_vec = raw_oe_vec.reshape(len(raw_oe_vec), 1)
                 raw_de_vec = raw_de_vec[~np.isnan(raw_de_vec)]
-                raw_de_vec = raw_de_vec.reshape(len(raw_de_vec),1)
+                raw_de_vec = raw_de_vec.reshape(len(raw_de_vec), 1)
                 length = len(raw_oe_vec)
-                
+
                 w, w_pre = self.weights(length, '', preseason=True)
-                #print w
-                if team == '104':
-                    print [(raw_oe_vec[k], adj_de[ind_oe][k]) for k in xrange(len(raw_oe_vec))]
-                # get new efficiency for the team, using equal weights
                 new_oe = np.sum(((raw_oe_vec / adj_de[ind_oe]) * w) * avg_oe_all) + preseason_oe[idx]*w_pre
                 new_de = np.sum(((raw_de_vec / adj_oe[ind_oe]) * w) * avg_de_all) + preseason_de[idx]*w_pre
                 adj_oe[idx] = new_oe
@@ -170,51 +181,54 @@ class Adjusted(object):
             r_off_arr.append(r_off)
             r_def_arr.append(r_def)
             cnt += 1
-        # return None
 
-        print r_def_arr
-        print r_off_arr
-        total_eff = adj_oe - adj_de
-        
-        self.query.adjusted_stats(self.dt)
-        self.query.execute(commit=True)
-        print 'asdf'
+        # print r_def_arr
+        # print r_off_arr
+        self.adj_oe = adj_oe
+        self.adj_de = adj_de
+        # total_eff = adj_oe - adj_de
+
+        # self.query.conn.close()
+
+    def store_ranks(self):
         for team, idx in self.team_indices.iteritems():
-            if team is None:
-                continue
-            l[idx] = team
-            d = {}
-            d['statsheet'] = team
-            d['adjoe'] = float(adj_oe[idx])
-            d['adjde'] = float(adj_de[idx])
-            self.query.insert_values('adjusted_stats_%s' % self.date_seq, d)
 
-        rank_arr = total_eff
-        ranks = [(team, rank_arr[idx]) for team, idx in self.team_indices.iteritems()]
-        ranks = sorted(ranks, key=lambda tup: tup[1])
-
-        for j in xrange(len(ranks)):
-            print "#%d %s: %s" % (len(ranks) - j, ranks[j][0], ranks[j][1]), preseason_oe[j]-preseason_de[j]
+            self.query.query = """UPDATE features SET home_adjoe = %s, home_adjde = %s WHERE dt = '%s' AND (home_team = '%s')""" % (self.adj_oe[idx][0], self.adj_de[idx][0], self.date_string, team)
+            self.query.execute(commit=True)
+            self.query.query = """UPDATE features SET away_adjoe = %s, away_adjde = %s WHERE dt = '%s' AND (away_team = '%s')""" % (self.adj_oe[idx][0], self.adj_de[idx][0], self.date_string, team)
+            self.query.execute(commit=True)
+            # self.query.query = """UPDATE features SET home_adjde = %s WHERE dt = '%s' AND (home_team = '%s')""" % (self.adj_de[idx][0], self.date_string, team)
+            # self.query.execute(commit=True)
+            # self.query.query = """UPDATE features SET away_adjde = %s WHERE dt = '%s' AND (away_team = '%s')""" % (self.adj_de[idx][0], self.date_string, team)
+            # self.query.execute(commit=True)
 
         self.query.conn.close()
 
+    def print_ranks(self):
+        rank_arr = self.adj_oe - self.adj_de
+        ranks = [(team, rank_arr[idx]) for team, idx in
+                 self.team_indices.iteritems()]
+        ranks = sorted(ranks, key=lambda tup: tup[1])
+
+        for j in xrange(len(ranks)):
+            print "#%d %s: %s" % (len(ranks) - j, ranks[j][0], ranks[j][1])
 
     def weights(self, n, wtype='linear', preseason=False):
-        if n == 0: 
+        if n == 0:
             w = np.array([1])
             return w[:, np.newaxis], 0
         elif wtype == 'linear':
             w = np.array(xrange(1, n+1))
-            w =  w*(1/float(w.sum()))
+            w = w*(1/float(w.sum()))
         else:
             w = np.ones(n) / n
 
         w = w[:, np.newaxis]
         if preseason:
-            c = 0.3
+            c = 0.4
             n_pre = 10
             w_pre = c - c*n/(n_pre)
-            w_pre = max(0, w_pre) # don't return anything less than zero
+            w_pre = max(0, w_pre)  # don't return anything less than zero
             w = w*(1./(w.sum()/(1 - w_pre)))
             #w = np.concatenate((np.array([w_pre])[:, np.newaxis], w), axis=0)
         else:
@@ -224,20 +238,17 @@ class Adjusted(object):
 
 
 def main():
-    q = Query()
-    rank = Adjusted(date(2014, 2, 1), q)
-    # rank.box_stats()
-    # rank.advanced_stats()
-    rank.team_rank()
-    # rank.drop_box()
-    # rank.drop_advanced()
-    # team_rank(date(2014, 2, 1))
-    # for j in xrange(5):
-    #     w = weights(j, wtype='uniform', preseason=True)
-    #     print w
-    #     print 'Sum: ', w.sum()
-    #     print '*'*10
-    # preseason_rank('', date(2014, 3, 1))
+    start_date = datetime(2013, 12, 22).date()
+    end_date = datetime(2014, 1, 31).date()
+    day_count = (end_date - start_date).days + 1
+
+    for single_date in (start_date + timedelta(n) for n in xrange(day_count)):
+        print single_date
+        q = Query()
+        rank = Adjusted(single_date, q)
+        rank.team_rank()
+        rank.store_ranks()
+        # rank.print_ranks()
 
 
 if __name__ == '__main__':

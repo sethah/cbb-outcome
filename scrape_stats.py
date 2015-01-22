@@ -6,6 +6,10 @@ import db_tools
 import traceback
 import csv
 import re
+from queries import Query
+import re
+
+
 
 
 def get_game_data(soup, game_dict):
@@ -37,6 +41,34 @@ def get_game_data(soup, game_dict):
                 game_dict['officials'] = ','.join(officials)
     return game_dict
 
+
+def scrape_odds(url):
+    q = Query()
+    url = 'http://espn.go.com/mens-college-basketball/lines?date=20150113'
+    soup = scrape.get_soup(url)
+    team_rows = soup.findAll('tr', {'class': 'stathead'})
+
+    largest_table = scrape.get_largest_table(soup)
+    rows = largest_table.findAll('tr')
+
+    team_flag = False
+    for row in rows:
+        try:
+            if row.get('class')[0] == 'stathead':
+                team_row = row.get_text().split(',')[0]
+                teams = team_row.split(' at ')
+                team1 = re.sub("\d+", "", teams[0]).replace('#', '').strip()
+                team2 = re.sub("\d+","", teams[1]).replace('#', '').strip()
+                print team1, team2
+                team_flag = True
+            elif (row.get('class')[0] == 'evenrow' or row.get('class')[0] == 'oddrow') and team_flag:
+                pass
+
+        except:
+            continue
+
+
+    q.conn.close()
 
 def get_teams_and_score(box_soup, game_dict):
 
@@ -382,6 +414,10 @@ def drop_duplicate_missing_games(fname):
 
 
 def main():
+    scrape_odds('')
+    return None
+
+
     start_date = datetime(2014, 2, 21).date()
     end_date = datetime(2014, 3, 10).date()
     store_games(start_date, end_date)

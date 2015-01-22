@@ -70,6 +70,15 @@ class Query(object):
 
         self.query = q
 
+    def detailed_box(self):
+        q = """CREATE TABLE detailed_box AS
+               SELECT b.*, r.statsheet
+               FROM box_stats b
+               JOIN raw_teams r
+               ON r.ncaaid = b.teamid
+            """
+        self.query = q
+
     def box_stats(self, the_date):
         date_string = datetime.strftime(the_date, '%Y-%m-%d')
         date_seq = datetime.strftime(the_date, '%Y%m%d')
@@ -163,6 +172,47 @@ class Query(object):
                 );""" % date_seq
         print q
         self.query = q
+
+    def possessions(self):
+        q = """ CREATE TABLE features2 AS
+                WITH poss AS
+                (SELECT
+                    a.teamid,
+                    b.dt, 
+                    sum(0.96*(a.fga - a.oreb + a.turnover + (0.475*a.fta))) OVER (PARTITION BY a.teamid ORDER BY b.dt) AS cum_poss,
+                    count(a.teamid) OVER (PARTITION BY a.teamid ORDER BY b.dt) as ngames
+                    FROM detailed_box a
+                JOIN games b
+                ON a.gameid = b.id),
+                
+                a AS
+                (SELECT f.*, p.cum_poss / p.ngames AS home_poss, p.ngames AS home_ngames
+                FROM features f
+                JOIN poss p
+                ON p.teamid = f.home_id AND p.dt = f.dt),
+                
+                b AS
+                (SELECT
+                    DISTINCT b.dt, 
+                    sum(0.96*(a.fga - a.oreb + a.turnover + (0.475*a.fta))) OVER(ORDER BY b.dt) / (count(b.dt) OVER(ORDER BY b.dt))AS poss_game,
+                    count(b.dt) OVER (ORDER BY b.dt) / 2 AS total_games
+                FROM detailed_box a
+                JOIN games b
+                ON a.gameid = b.id
+                ORDER BY b.dt)
+                
+                SELECT c.*, b.poss_game, b.total_games
+                FROM
+                  (SELECT a.*, p.cum_poss / p.ngames AS away_poss, p.ngames AS away_ngames
+                  FROM a
+                  JOIN poss p
+                  ON p.teamid = a.away_id AND p.dt = a.dt
+                  ORDER BY a.away_team) c
+                JOIN b
+                ON b.dt = c.dt;"""
+
+        self.query = q
+
 
     def box_advanced_stats(self, new_table='advanced_stats',
                            stats_table='box_stats'):
@@ -261,12 +311,38 @@ class Query(object):
             + suffix
         self.query = q
 
+    def features(self):
+        q = """ CREATE TABLE features AS
+
+                WITH a AS
+                (SELECT 
+                      g.id,
+                      g.home_team AS home_id,
+                      r.statsheet AS home_team,
+                      g.away_team AS away_id,
+                      g.home_score,
+                      g.away_score,
+                      g.dt
+                FROM games g
+                JOIN raw_teams r
+                ON g.home_team = r.ncaaid)
+                
+                SELECT
+                      a.*,
+                      r.statsheet as away_team
+                FROM a
+                JOIN raw_teams r
+                ON a.away_id = r.ncaaid
+            """
+
+        self.query = q
+
 def main():
     q = Query()
-    # q.box_stats(date(2014, 2, 1))
-    # q.execute(commit=True)
-    # print q.query
-    # return None
+    q.possessions()
+    q.execute(commit=True)
+    print q.query
+    return None
     the_date = date(2014, 2, 1)
     date_seq = datetime.strftime(the_date, '%Y%m%d')
     q.box_advanced_stats('advanced_stats_%s' % date_seq,'box_stats_%s' % date_seq)
