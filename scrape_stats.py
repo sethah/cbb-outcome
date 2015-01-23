@@ -8,413 +8,542 @@ import csv
 import re
 from queries import Query
 import re
+import traceback
 
 
+class DataPipeline(object):
 
+    def __init__(self):
+        self.query = Query()
 
-def get_game_data(soup, game_dict):
-    if soup is None:
+        #load teams for easier access
+        self.teams()
+
+    def teams(self):
+        self.teams = pd.read_sql("""SELECT * FROM raw_teams""", self.query.conn)
+
+    def date_string(self, dt):
+        return datetime.strftime(dt, '%Y-%m-%d')
+
+    def date_seq(self, dt):
+        return datetime.strftime(dt, '%Y%m%d')
+
+    def get_team(self, team, from_col, to_col):
+        try:
+            return self.teams[self.teams[from_col] == team][to_col].iloc[0]
+        except:
+            print "Couldn't find %s" % team
+
+    def get_game_data(soup, game_dict):
+        if soup is None:
+            return game_dict
+
+        hdrs = {'Game Date', 'Location', 'Attendance', 'Officials'}
+        rows = soup.findAll('tr')
+        for row in rows:
+            bold_cells = row.findAll('td', {'class': 'boldtext'})
+            if len(bold_cells) == 0:
+                continue
+
+            tds = row.findAll('td')
+            hdr = bold_cells[0].get_text().replace(':', '').strip()
+            if hdr in hdrs:
+                text = tds[1].get_text().strip()
+                if hdr == 'Game Date':
+                    date_args = text.split()
+                    date = date_args[0]
+                    date = datetime.strptime(date, '%m/%d/%Y').date()
+                    game_dict['dt'] = date
+                elif hdr == 'Location':
+                    game_dict['venue'] = text
+                elif hdr == 'Attendance':
+                    game_dict['attendance'] = int(text.replace(',', ''))
+                elif hdr == 'Officials':
+                    officials = text.split(', ')
+                    game_dict['officials'] = ','.join(officials)
         return game_dict
 
-    hdrs = {'Game Date', 'Location', 'Attendance', 'Officials'}
-    rows = soup.findAll('tr')
-    for row in rows:
-        bold_cells = row.findAll('td', {'class': 'boldtext'})
-        if len(bold_cells) == 0:
-            continue
+    def scrape_scoreboard(self, dt):
+        single_date = date(2013, 12, 17)
+        url = 'http://statsheet.com/mcb/games/scoreboard/%s' % self.date_string(single_date)
 
-        tds = row.findAll('td')
-        hdr = bold_cells[0].get_text().replace(':', '').strip()
-        if hdr in hdrs:
-            text = tds[1].get_text().strip()
-            if hdr == 'Game Date':
-                date_args = text.split()
-                date = date_args[0]
-                date = datetime.strptime(date, '%m/%d/%Y').date()
-                game_dict['dt'] = date
-            elif hdr == 'Location':
-                game_dict['venue'] = text
-            elif hdr == 'Attendance':
-                game_dict['attendance'] = int(text.replace(',', ''))
-            elif hdr == 'Officials':
-                officials = text.split(', ')
-                game_dict['officials'] = ','.join(officials)
-    return game_dict
+        soup = scrape.get_soup(url)
+        largest_table = scrape.get_largest_table(soup)
+        games = largest_table.findAll('table')
 
+        for gtable in games:
+            game_data = self.process_game(gtable)
+            print game_data
 
-def scrape_odds(url):
-    q = Query()
-    url = 'http://espn.go.com/mens-college-basketball/lines?date=20150113'
-    soup = scrape.get_soup(url)
-    team_rows = soup.findAll('tr', {'class': 'stathead'})
+    def update_spread(self, game_data):
 
-    largest_table = scrape.get_largest_table(soup)
-    rows = largest_table.findAll('tr')
+        q = """UPDATE games
+               SET home_spread
+               WHERE dt = '%s'
+               AND home_team = %s
+               AND away_team = %s""" \
+               % (self.date_string(game_data['date']), 
+                  game_data['home_team'],
+                  game_data['away_team'])
 
-    team_flag = False
-    for row in rows:
-        try:
-            if row.get('class')[0] == 'stathead':
-                team_row = row.get_text().split(',')[0]
-                teams = team_row.split(' at ')
-                team1 = re.sub("\d+", "", teams[0]).replace('#', '').strip()
-                team2 = re.sub("\d+","", teams[1]).replace('#', '').strip()
-                print team1, team2
-                team_flag = True
-            elif (row.get('class')[0] == 'evenrow' or row.get('class')[0] == 'oddrow') and team_flag:
-                pass
+        self.query.query = q
+        self.query.execute(commit=True, fetch=False)
 
-        except:
-            continue
+    def process_game(self, game_table, site='statsheet'):
+        d = {}
+        rows = game_table.findAll('tr')
 
+        # load rows
+        hdr = rows[0]
+        away_row = rows[1]
+        home_row = rows[2]
+        summary_row = rows[3]
 
-    q.conn.close()
+        # get the teams
+        home_tds = home_row.findAll('td')
+        home_th = home_row.findAll('th')[0]
+        away_tds = away_row.findAll('td')
+        away_th = away_row.findAll('th')[0]
+        home_slug =  home_tds[0].find('a')['href'].split('/')[-1]
+        away_slug = away_tds[0].find('a')['href'].split('/')[-1]
+        d['home_id'] = self.get_team(home_slug, 'statsheet', 'ncaaid')
+        d['away_id'] = self.get_team(away_slug, 'statsheet', 'ncaaid')
 
-def get_teams_and_score(box_soup, game_dict):
+        # get scores
+        d['home_scores'] = [int(cell.get_text() or 0) for cell in home_tds[1:3]]
+        d['away_scores'] = [int(cell.get_text() or 0) for cell in away_tds[1:3]]
+        d['home_scores'].append(int(home_th.get_text().strip() or 0))
+        d['away_scores'].append(int(away_th.get_text().strip() or 0))
+        if home_tds[-1].get_text().strip() != '':
+            # there is a spread
+            d['home_spread'] = float(home_tds[-1].get_text().replace('+',''))
+            d['away_spread'] = float(away_tds[-1].get_text().replace('+',''))
 
-    # grab the game summary table
-    summary_table = box_soup.findAll('table')[0]
-    trs = summary_table.findAll('tr')
+        return d
 
-    # store away team data
-    away_tds = trs[1].findAll('td')
-    away_scores = get_score_by_half(away_tds)
-    away_team = away_tds[0].get_text().strip()
-    away_team_id = db_tools.get_team_id(str(away_team), col1='ncaa', col2='ncaaid')
-    game_dict['away_team'] = away_team_id
-    game_dict['away_first'] = away_scores[0]
-    game_dict['away_second'] = away_scores[1]
-    game_dict['away_score'] = away_scores[-1]
+    def scrape_odds(start_date, end_date):
+        q = Query()
+        day_count = (end_date - start_date).days + 1
 
-    # store home team data
-    home_tds = trs[2].findAll('td')
-    home_scores = get_score_by_half(home_tds)
-    home_team = home_tds[0].get_text().strip()
-    home_team_id = db_tools.get_team_id(str(home_team), col1='ncaa', col2='ncaaid')
-    game_dict['home_team'] = home_team_id
-    game_dict['home_first'] = home_scores[0]
-    game_dict['home_second'] = home_scores[1]
-    game_dict['home_score'] = home_scores[-1]
+        for single_date in (start_date + timedelta(n) for n in xrange(day_count)):
+            date_seq = datetime.strftime(single_date, '%Y%m%d')
+            date_string = datetime.strftime(single_date, '%Y-%m-%d')
+            url = 'http://espn.go.com/mens-college-basketball/lines?date=%s' % date_seq
 
-    # determine the winner
-    if game_dict['home_score'] > game_dict['away_score']:
-        game_dict['home_outcome'] = 'W'
-    else:
-        game_dict['home_outcome'] = 'L'
+            soup = scrape.get_soup(url)
+            team_rows = soup.findAll('tr', {'class': 'stathead'})
 
-    return game_dict, home_team, away_team
+            largest_table = scrape.get_largest_table(soup)
+            rows = largest_table.findAll('tr')
 
+            team_flag = False
+            d = {}
+            cnt = 0
+            for row in rows:
+                try:
+                    if row.get('class') is None:
+                        continue
+                    if row.get('class')[0] == 'stathead':
+                        team_row = row.get_text().split(',')[0]
+                        teams = team_row.split(' at ')
+                        team1 = re.sub("\d+", "", teams[0]).replace('#', '').strip()
+                        team2 = re.sub("\d+","", teams[1]).replace('#', '').strip()
+                        # team1 = team1.replace("'", "''")
+                        # team2 = team2.replace("'", "''")
+                        print team1, team2
+                        team_flag = True
+                        home_team = q.cursor.execute("""SELECT ncaaid, espn_name FROM raw_teams WHERE espn_name = '%s' OR espn_name = '%s'""" % (team2.replace("'", "''"), team1.replace("'", "''")))
+                        for result in q.cursor.fetchall():
+                            if result[1] == team1:
+                                away_team = result[0]
+                                print 'ateam', away_team, team1
+                            elif result[1] == team2:
+                                home_team = result[0]
+                                print 'hteam', home_team, team2
 
-def get_score_by_half(tds):
+                    elif (row.get('class')[0] == 'evenrow' or row.get('class')[0] == 'oddrow') and team_flag:
+                        if len(row.findAll('table')) == 0:
+                            continue
+                        # table = row.findAll('table')[0]
+                        # row = table.findAll('tr')[0]
+                        # td = row.findAll('td')[0]
+                        tds = row.findAll('td')
+                        td = tds[1]
+                        if td.get_text().lower().strip() == 'even':
+                            home_spread = 0
+                            away_spread = 0
+                        else:
+                            td = td.findAll('td')[0]
 
-    scores = []
-    for td in tds:
-        try:
-            val = int(td.get_text().strip())
-        except:
-            continue
+                            spreads = BeautifulSoup(str(td).replace('<br/>', ','), 'html.parser')
+                            spreads = spreads.get_text().split(',')
+                            away_spread = float(spreads[0].replace('+',''))
+                            home_spread = float(spreads[1].replace('+',''))
+                        print away_spread, home_spread
+                        
+                        qry = """UPDATE games SET home_spread = %s WHERE dt = '%s' AND (home_team = %s) AND (away_team = %s)""" % (home_spread, date_string, home_team, away_team)
+                        q.query = qry
+                        q.execute(commit=True)
+                        cnt += 1
+                        team_flag = False
 
-        scores.append(val)
-
-    return scores
-
-
-def store_games(start_date, end_date):
-    big_ten = {'301', '306', '312', '418', '416', '428',
-               '463', '509', '539', '518', '559', '796'}
-    day_count = (end_date - start_date).days + 1
-
-    for single_date in (start_date + timedelta(n) for n in xrange(day_count)):
-        date_string = datetime.strftime(single_date, '%m/%d/%Y')
-        teams, box_link_list, missing_games = get_box_links(single_date)
-
-        '''j = 0
-        new_teams = []
-        new_link_list = []
-        for team_pair in teams:
-            new_pair = [db_tools.get_team_id(team_pair[0]),
-                        db_tools.get_team_id(team_pair[1])]
-
-            if new_pair[0] in big_ten and new_pair[1] in big_ten:
-                new_teams.append(new_pair)
-                new_link_list.append(box_link_list[j])
-            j += 1
-
-        box_link_list = new_link_list'''
-        #print new_teams, new_link_list
-
-        # write the missing games into a csv
-        write_csv(missing_games, 'missing_games.csv')
-
-        msg = 'Storing games for %s' % date_string
-        scrape.print_msg(msg)
-
-        stored_count = 0
-        not_stored_count = 0
-        for link in box_link_list:
-            stored = store_game(link)
-            if stored:
-                stored_count += 1
-            else:
-                not_stored_count += 1
-
-        msg = '%d out of %d games were stored' % \
-              (stored_count, stored_count + not_stored_count)
-        scrape.print_msg(msg, '*')
+                except:
+                    print traceback.format_exc()
+                    pass
+                #     continue
+        print cnt
 
 
-def store_game(link):
-    this_game = {'home_team': '', 'away_team': '', 'home_outcome': '',
-                 'home_score': 0, 'away_score': 0, 'home_first': 0,
-                 'away_first': 0, 'home_second': 0, 'away_second': 0,
-                 'neutral_site': False, 'officials': '', 'attendance': 0,
-                 'venue': '', 'dt': None}
+        q.conn.close()
 
-    soup = scrape.get_soup(link)
-    if soup is None:
-        return False
+    def get_teams_and_score(box_soup, game_dict):
 
-    # grab the cursor for the database
-    cur, conn = db_tools.get_cursor()
+        # grab the game summary table
+        summary_table = box_soup.findAll('table')[0]
+        trs = summary_table.findAll('tr')
 
-    # fill game dict with data from the link
-    this_game = get_game_data(soup, this_game)
-    this_game, home_team, away_team = get_teams_and_score(soup, this_game)
+        # store away team data
+        away_tds = trs[1].findAll('td')
+        away_scores = get_score_by_half(away_tds)
+        away_team = away_tds[0].get_text().strip()
+        away_team_id = db_tools.get_team_id(str(away_team), col1='ncaa', col2='ncaaid')
+        game_dict['away_team'] = away_team_id
+        game_dict['away_first'] = away_scores[0]
+        game_dict['away_second'] = away_scores[1]
+        game_dict['away_score'] = away_scores[-1]
 
-    # store the game in the database
-    try:
-        # remove this game from the 'error_games.csv'
+        # store home team data
+        home_tds = trs[2].findAll('td')
+        home_scores = get_score_by_half(home_tds)
+        home_team = home_tds[0].get_text().strip()
+        home_team_id = db_tools.get_team_id(str(home_team), col1='ncaa', col2='ncaaid')
+        game_dict['home_team'] = home_team_id
+        game_dict['home_first'] = home_scores[0]
+        game_dict['home_second'] = home_scores[1]
+        game_dict['home_score'] = home_scores[-1]
 
-        db_tools.insert_values('games', this_game, cur=cur)
-        conn.commit()
-
-    except Exception, e:
-        print "Error storing game for %s, %s, on %s" \
-              % (home_team, away_team, this_game['dt'])
-
-        if this_game['home_team'] is None or this_game['away_team'] is None:
-            # error storing game due to null condition
-            print "Home team is: %s, and away team is: %s \n" \
-                   % (this_game['home_team'], this_game['away_team'])
-        elif type(e).__name__ == 'IntegrityError':
-            # the game already exists
-            print 'This game already exists!\n'
+        # determine the winner
+        if game_dict['home_score'] > game_dict['away_score']:
+            game_dict['home_outcome'] = 'W'
         else:
-            error_game = [this_game['home_team'], this_game['away_team'],
-                          datetime.strftime(this_game['dt'], '%m/%d/%Y'),
-                          type(e).__name__]
-            write_csv([error_game], 'error_games.csv')
-            print traceback.format_exc()
-            print "Generic error, home team is: %s, and away team is: %s \n" \
-                % (this_game['home_team'], this_game['away_team'])
-        conn.rollback()
-        return False
+            game_dict['home_outcome'] = 'L'
 
-    # get the gameid from the games table and use as foreign key
-    cur.execute("""SELECT id
-                       FROM games
-                       WHERE home_team = '%s'
-                       AND away_team = '%s'
-                       AND dt = '%s'"""
-                % (this_game['home_team'],
-                   this_game['away_team'], this_game['dt']))
-
-    gameid = cur.fetchone()
-
-    # store the box stats for the game
-    rows = get_box_rows(soup)
-    box_data = raw_box_to_stats(rows, gameid)
-    for box_dict in box_data:
-        db_tools.insert_values('box_stats', box_dict, cur=cur)
-    conn.commit()
-    conn.close()
-
-    return True
+        return game_dict, home_team, away_team
 
 
-def get_box_links(date):
-    fmt = '%m/%d/%Y'
-    scoreboard_url = scrape.scoreboard_url(date)
+    def get_score_by_half(tds):
 
-    soup = scrape.get_soup(scoreboard_url)
-
-    # find the largest table in the soup
-    largest_table = scrape.get_largest_table(soup)
-    if largest_table is not None:
-        game_tables = largest_table.findAll('table')
-    else:
-        return [], [], []
-
-    team_list, box_link_list, missing_links = [], [], []
-    for game in game_tables:
-        # skip tables that contain tables
-        if len(game.findAll('table')) != 0:
-            continue
-
-        box_link = None
-        teams = []
-        rows = game.findAll('tr')
-        tds = [row.findAll('td')[0] for row in rows]
-
-        # find all the links in the game table
-        game_links = game.findAll('a')
-
-        idx = 0
+        scores = []
         for td in tds:
-            # get the url in the a tag
             try:
-                link = td.findAll('a')[0]
-                url = link['href']
+                val = int(td.get_text().strip())
             except:
-                url = ''
-
-            if 'team/index' in url:
-                # handle a team link
-                team_string = link.get_text().strip()
-                teamID = url[url.index('=')+1:len(url)]
-                teams.append(team_string)
-
-            elif url == '' and idx != 2:
-                # if there is no link for the cell, and isn't the (game score)
-                team_string = td.get_text().strip()
-                teams.append(team_string)
-            elif 'game/index' in url:
-                box_link = scrape.url_to_game_link(url)
-
-            idx += 1
-
-        if box_link is not None and len(teams) == 2:
-            # box link was found and two teams were found
-            team_list.append(teams)
-            box_link_list.append(box_link)
-        elif len(teams) == 2:
-            # there was no link, but the game is there
-            team1_exists = db_tools.team_exists(str(teams[0]))
-            team2_exists = db_tools.team_exists(str(teams[1]))
-            if team1_exists and team2_exists:
-                teams.append(datetime.strftime(date, fmt))
-                missing_links.append(teams)
-
-    return team_list, box_link_list, missing_links
-
-
-def get_box_rows(soup):
-
-    box_rows = []
-
-    tables = soup.findAll('table', {'class': 'mytable'})
-    for table in tables:
-        headers = table.findAll('tr', {'class': 'heading'})
-        if len(headers) == 0:
-            continue
-
-        header = headers[0]
-        team = header.findAll('td')[0].get_text().strip()
-
-        row = table.findAll('tr', {'class': 'grey_heading'})[1]
-        box_rows.append((str(row), team))
-
-    return box_rows
-
-
-def raw_box_to_stats(rows, gameid):
-
-    # these headers are the headers used by stats.ncaa's box scores
-    hdrs = ['Player', 'Pos', 'MP', 'FGM', 'FGA', '3FG', '3FGA',
-            'FT', 'FTA', 'PTS', 'ORebs', 'DRebs', 'Tot Reb',
-            'AST', 'TO', 'STL', 'BLK', 'Fouls']
-
-    header_dict = {'Player': 'teamid', 'MP': 'mp', 'FGM': 'fgm',
-                   'FGA': 'fga', '3FG': 'tpm', '3FGA': 'tpa', 'FT': 'ftm',
-                   'FTA': 'fta', 'PTS': 'pts', 'ORebs': 'oreb',
-                   'DRebs': 'dreb', 'Tot Reb': 'reb', 'AST': 'ast',
-                   'TO': 'turnover', 'STL': 'stl', 'BLK': 'blk',
-                   'Fouls': 'pf'}
-
-    box_data = []
-    d = {header_dict[key]: 0 for key in header_dict}
-    # max_score variable will be used to determine who won the game
-    j = 0
-    for row in rows:
-        box_data.append(d.copy())
-        team = row[1]
-        row_string = row[0]
-
-        # assign the gameid to this stat
-        box_data[j]['gameid'] = gameid
-
-        # get the teamid from team name
-        teamid = db_tools.get_team_id(team, col1='ncaa', col2='ncaaid')
-        box_data[j]['teamid'] = teamid
-
-        # convert row to bs object for parsing
-        row = BeautifulSoup(row_string, "html.parser")
-        tds = row.findAll('td')
-
-        # column index for each row
-        k = 0
-        for td in tds:
-            string = td.get_text().strip()
-
-            # remove non ASCII
-            string = re.sub(r'[^\x00-\x7f]', r'', string)
-
-            if string == '':
-                # ignore empty cells
-                k += 1
                 continue
 
-            if hdrs[k] == 'Player':
-                k += 1
-                continue
-            elif hdrs[k] == 'Pos':
-                k += 1
-                continue
-            elif hdrs[k] == 'MP':
-                if ':' in string:
-                    val = int(string[0:string.find(':')])
-                    box_data[j][header_dict[hdrs[k]]] = val
+            scores.append(val)
+
+        return scores
+
+
+    def store_games(start_date, end_date):
+        big_ten = {'301', '306', '312', '418', '416', '428',
+                   '463', '509', '539', '518', '559', '796'}
+        day_count = (end_date - start_date).days + 1
+
+        for single_date in (start_date + timedelta(n) for n in xrange(day_count)):
+            date_string = datetime.strftime(single_date, '%m/%d/%Y')
+            teams, box_link_list, missing_games = get_box_links(single_date)
+
+            '''j = 0
+            new_teams = []
+            new_link_list = []
+            for team_pair in teams:
+                new_pair = [db_tools.get_team_id(team_pair[0]),
+                            db_tools.get_team_id(team_pair[1])]
+
+                if new_pair[0] in big_ten and new_pair[1] in big_ten:
+                    new_teams.append(new_pair)
+                    new_link_list.append(box_link_list[j])
+                j += 1
+
+            box_link_list = new_link_list'''
+            #print new_teams, new_link_list
+
+            # write the missing games into a csv
+            write_csv(missing_games, 'missing_games.csv')
+
+            msg = 'Storing games for %s' % date_string
+            scrape.print_msg(msg)
+
+            stored_count = 0
+            not_stored_count = 0
+            for link in box_link_list:
+                stored = store_game(link)
+                if stored:
+                    stored_count += 1
+                else:
+                    not_stored_count += 1
+
+            msg = '%d out of %d games were stored' % \
+                  (stored_count, stored_count + not_stored_count)
+            scrape.print_msg(msg, '*')
+
+
+    def store_game(link):
+        this_game = {'home_team': '', 'away_team': '', 'home_outcome': '',
+                     'home_score': 0, 'away_score': 0, 'home_first': 0,
+                     'away_first': 0, 'home_second': 0, 'away_second': 0,
+                     'neutral_site': False, 'officials': '', 'attendance': 0,
+                     'venue': '', 'dt': None}
+
+        soup = scrape.get_soup(link)
+        if soup is None:
+            return False
+
+        # grab the cursor for the database
+        cur, conn = db_tools.get_cursor()
+
+        # fill game dict with data from the link
+        this_game = get_game_data(soup, this_game)
+        this_game, home_team, away_team = get_teams_and_score(soup, this_game)
+
+        # store the game in the database
+        try:
+            # remove this game from the 'error_games.csv'
+
+            db_tools.insert_values('games', this_game, cur=cur)
+            conn.commit()
+
+        except Exception, e:
+            print "Error storing game for %s, %s, on %s" \
+                  % (home_team, away_team, this_game['dt'])
+
+            if this_game['home_team'] is None or this_game['away_team'] is None:
+                # error storing game due to null condition
+                print "Home team is: %s, and away team is: %s \n" \
+                       % (this_game['home_team'], this_game['away_team'])
+            elif type(e).__name__ == 'IntegrityError':
+                # the game already exists
+                print 'This game already exists!\n'
             else:
-                # some of the values have a '/' appended, so remove it
-                val = int(string.replace('/', ''))
-                box_data[j][header_dict[hdrs[k]]] = val
+                error_game = [this_game['home_team'], this_game['away_team'],
+                              datetime.strftime(this_game['dt'], '%m/%d/%Y'),
+                              type(e).__name__]
+                write_csv([error_game], 'error_games.csv')
+                print traceback.format_exc()
+                print "Generic error, home team is: %s, and away team is: %s \n" \
+                    % (this_game['home_team'], this_game['away_team'])
+            conn.rollback()
+            return False
 
-            k += 1
-        j += 1
-    return box_data
+        # get the gameid from the games table and use as foreign key
+        cur.execute("""SELECT id
+                           FROM games
+                           WHERE home_team = '%s'
+                           AND away_team = '%s'
+                           AND dt = '%s'"""
+                    % (this_game['home_team'],
+                       this_game['away_team'], this_game['dt']))
+
+        gameid = cur.fetchone()
+
+        # store the box stats for the game
+        rows = get_box_rows(soup)
+        box_data = raw_box_to_stats(rows, gameid)
+        for box_dict in box_data:
+            db_tools.insert_values('box_stats', box_dict, cur=cur)
+        conn.commit()
+        conn.close()
+
+        return True
 
 
-def store_box_stats(cur, soup, gameid):
+    def get_box_links(date):
+        fmt = '%m/%d/%Y'
+        scoreboard_url = scrape.scoreboard_url(date)
 
-    rows = get_box_rows(soup)
-    box_data = raw_box_to_stats(rows, gameid)
-    for box_dict in box_data:
-        db_tools.insert_values('box_stats', box_dict)
+        soup = scrape.get_soup(scoreboard_url)
+
+        # find the largest table in the soup
+        largest_table = scrape.get_largest_table(soup)
+        if largest_table is not None:
+            game_tables = largest_table.findAll('table')
+        else:
+            return [], [], []
+
+        team_list, box_link_list, missing_links = [], [], []
+        for game in game_tables:
+            # skip tables that contain tables
+            if len(game.findAll('table')) != 0:
+                continue
+
+            box_link = None
+            teams = []
+            rows = game.findAll('tr')
+            tds = [row.findAll('td')[0] for row in rows]
+
+            # find all the links in the game table
+            game_links = game.findAll('a')
+
+            idx = 0
+            for td in tds:
+                # get the url in the a tag
+                try:
+                    link = td.findAll('a')[0]
+                    url = link['href']
+                except:
+                    url = ''
+
+                if 'team/index' in url:
+                    # handle a team link
+                    team_string = link.get_text().strip()
+                    teamID = url[url.index('=')+1:len(url)]
+                    teams.append(team_string)
+
+                elif url == '' and idx != 2:
+                    # if there is no link for the cell, and isn't the (game score)
+                    team_string = td.get_text().strip()
+                    teams.append(team_string)
+                elif 'game/index' in url:
+                    box_link = scrape.url_to_game_link(url)
+
+                idx += 1
+
+            if box_link is not None and len(teams) == 2:
+                # box link was found and two teams were found
+                team_list.append(teams)
+                box_link_list.append(box_link)
+            elif len(teams) == 2:
+                # there was no link, but the game is there
+                team1_exists = db_tools.team_exists(str(teams[0]))
+                team2_exists = db_tools.team_exists(str(teams[1]))
+                if team1_exists and team2_exists:
+                    teams.append(datetime.strftime(date, fmt))
+                    missing_links.append(teams)
+
+        return team_list, box_link_list, missing_links
 
 
-def get_missing_links(missing_teams, year):
-    for team_pair in missing_teams:
-        for team in team_pair:
-            teamid = db_tools.get_team_id(team)
-            team_link = scrape.get_url('team', team=teamid, year=year)
-            print team_link
+    def get_box_rows(soup):
+
+        box_rows = []
+
+        tables = soup.findAll('table', {'class': 'mytable'})
+        for table in tables:
+            headers = table.findAll('tr', {'class': 'heading'})
+            if len(headers) == 0:
+                continue
+
+            header = headers[0]
+            team = header.findAll('td')[0].get_text().strip()
+
+            row = table.findAll('tr', {'class': 'grey_heading'})[1]
+            box_rows.append((str(row), team))
+
+        return box_rows
 
 
-def write_csv(rows, fname):
-    b = open(fname, 'a')
-    a = csv.writer(b)
-    a.writerows(rows)
-    b.close()
+    def raw_box_to_stats(rows, gameid):
+
+        # these headers are the headers used by stats.ncaa's box scores
+        hdrs = ['Player', 'Pos', 'MP', 'FGM', 'FGA', '3FG', '3FGA',
+                'FT', 'FTA', 'PTS', 'ORebs', 'DRebs', 'Tot Reb',
+                'AST', 'TO', 'STL', 'BLK', 'Fouls']
+
+        header_dict = {'Player': 'teamid', 'MP': 'mp', 'FGM': 'fgm',
+                       'FGA': 'fga', '3FG': 'tpm', '3FGA': 'tpa', 'FT': 'ftm',
+                       'FTA': 'fta', 'PTS': 'pts', 'ORebs': 'oreb',
+                       'DRebs': 'dreb', 'Tot Reb': 'reb', 'AST': 'ast',
+                       'TO': 'turnover', 'STL': 'stl', 'BLK': 'blk',
+                       'Fouls': 'pf'}
+
+        box_data = []
+        d = {header_dict[key]: 0 for key in header_dict}
+        # max_score variable will be used to determine who won the game
+        j = 0
+        for row in rows:
+            box_data.append(d.copy())
+            team = row[1]
+            row_string = row[0]
+
+            # assign the gameid to this stat
+            box_data[j]['gameid'] = gameid
+
+            # get the teamid from team name
+            teamid = db_tools.get_team_id(team, col1='ncaa', col2='ncaaid')
+            box_data[j]['teamid'] = teamid
+
+            # convert row to bs object for parsing
+            row = BeautifulSoup(row_string, "html.parser")
+            tds = row.findAll('td')
+
+            # column index for each row
+            k = 0
+            for td in tds:
+                string = td.get_text().strip()
+
+                # remove non ASCII
+                string = re.sub(r'[^\x00-\x7f]', r'', string)
+
+                if string == '':
+                    # ignore empty cells
+                    k += 1
+                    continue
+
+                if hdrs[k] == 'Player':
+                    k += 1
+                    continue
+                elif hdrs[k] == 'Pos':
+                    k += 1
+                    continue
+                elif hdrs[k] == 'MP':
+                    if ':' in string:
+                        val = int(string[0:string.find(':')])
+                        box_data[j][header_dict[hdrs[k]]] = val
+                else:
+                    # some of the values have a '/' appended, so remove it
+                    val = int(string.replace('/', ''))
+                    box_data[j][header_dict[hdrs[k]]] = val
+
+                k += 1
+            j += 1
+        return box_data
 
 
-def drop_duplicate_missing_games(fname):
-    df = pd.read_csv(fname)
-    newdf = df.drop_duplicates()
-    newdf.to_csv(fname, index=False)
+    def store_box_stats(cur, soup, gameid):
+
+        rows = get_box_rows(soup)
+        box_data = raw_box_to_stats(rows, gameid)
+        for box_dict in box_data:
+            db_tools.insert_values('box_stats', box_dict)
+
+
+    def get_missing_links(missing_teams, year):
+        for team_pair in missing_teams:
+            for team in team_pair:
+                teamid = db_tools.get_team_id(team)
+                team_link = scrape.get_url('team', team=teamid, year=year)
+                print team_link
+
+
+    def write_csv(rows, fname):
+        b = open(fname, 'a')
+        a = csv.writer(b)
+        a.writerows(rows)
+        b.close()
+
+
+    def drop_duplicate_missing_games(fname):
+        df = pd.read_csv(fname)
+        newdf = df.drop_duplicates()
+        newdf.to_csv(fname, index=False)
 
 
 def main():
-    scrape_odds('')
+    d = DataPipeline()
+    start_date = datetime(2014, 2, 20).date()
+    end_date = datetime(2014, 2, 20).date()
+    d.scrape_scoreboard('')
     return None
 
 

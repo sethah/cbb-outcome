@@ -21,7 +21,7 @@ class Query(object):
         self.cursor = cur
         self.conn = conn
 
-    def execute(self, conn=None, cur=None, commit=False, limit=0):
+    def execute(self, conn=None, cur=None, commit=False, limit=0, fetch=True):
         if limit != 0:
             # add a limit statement to the end of query
             self.query = self.query.replace(';', '')
@@ -37,10 +37,11 @@ class Query(object):
             self.conn.rollback()
 
         # fetch results if there are some
-        try:
-            self.results = self.cursor.fetchall()
-        except psycopg2.ProgrammingError:
-            pass
+        if fetch:
+          try:
+              self.results = self.cursor.fetchall()
+          except psycopg2.ProgrammingError:
+              print 'no results'
 
         #self.conn.close()
 
