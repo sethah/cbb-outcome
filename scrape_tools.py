@@ -30,82 +30,81 @@ class Page_Opener:
         soup = BeautifulSoup(the_page)
         return soup
 
+class Scraper(object):
 
-def print_msg(msg, char='-'):
-    l = len(msg)
-    print char*l
-    print msg
-    print char*l+'\n'
+    def __init__(self):
+        pass
+
+    def get_soup(self, link):
+        po = Page_Opener()
+        try:
+            soup = po.open_and_soup(link)
+        except:
+            #error connecting to link
+            soup = None
+
+        return soup
+
+    def get_ncaa_yearid(self, the_year):
+        year_dict = {2015: 12020, 2014: 11540, 2013: 11220}
+
+        return year_dict[the_year]
+
+    def year_from_date(self, date):
+        month = date.month
+        if month > 9:
+            year = date.year + 1
+        else:
+            year = date.year
+
+        return year
+
+    def get_largest_table(self, soup):
+        if soup is None:
+            return None
+
+        tables = soup.findAll('table')
+        if len(tables) == 0:
+            return None
+
+        largest_table = None
+        max_rows = 0
+        for table in soup.findAll('table'):
+            number_of_rows = len(table.findAll('tr'))
+            if number_of_rows > max_rows:
+                largest_table = table
+                max_rows = number_of_rows
+
+        return largest_table
+
+    def url_to_game_link(self, url):
+        if 'game/index' in url:
+            index = url[url.index('/index')+len('index/')+1:url.index('?')]
+            return 'http://stats.ncaa.org/game/box_score/'+index
+        else:
+            return None
+
+    def print_msg(self, msg, char='-'):
+        l = len(msg)
+        print char*l
+        print msg
+        print char*l+'\n'
+
+    def get_url(self, link_type, **kwargs):
+        if link_type == 'box':
+            link = 'http://stats.ncaa.org/game/index/3518684?org_id=6'
+        elif link_type == 'team':
+            year = kwargs['year']
+            year = str(get_ncaa_yearid(year))
+            teamid = kwargs['team']
+            link = 'http://stats.ncaa.org/team/index/'+year+'?org_id='+teamid
+
+        return link
 
 
-def get_soup(link):
-    po = Page_Opener()
-    try:
-        soup = po.open_and_soup(link)
-    except:
-        #error connecting to link
-        soup = None
-
-    return soup
 
 
-def scoreboard_url(date):
-    year = year_from_date(date)
-    date_string = datetime.strftime(date, '%m/%d/%Y')
-    prefix = 'http://stats.ncaa.org/team/schedule_list?academic_year='
-    suffix = '&division=1.0&sport_code=MBB&schedule_date='
-
-    return prefix+str(year)+suffix+date_string
-
-def get_url(link_type, **kwargs):
-    if link_type == 'box':
-        link = 'http://stats.ncaa.org/game/index/3518684?org_id=6'
-    elif link_type == 'team':
-        year = kwargs['year']
-        year = str(get_ncaa_yearid(year))
-        teamid = kwargs['team']
-        link = 'http://stats.ncaa.org/team/index/'+year+'?org_id='+teamid
-
-    return link
-
-def get_ncaa_yearid(the_year):
-    year_dict = {2015: 12020, 2014: 11540, 2013: 11220}
-
-    return year_dict[the_year]
 
 
-def year_from_date(date):
-    month = date.month
-    if month > 9:
-        year = date.year + 1
-    else:
-        year = date.year
-
-    return year
 
 
-def get_largest_table(soup):
-    if soup is None:
-        return None
-
-    tables = soup.findAll('table')
-    if len(tables) == 0:
-        return None
-
-    largest_table = None
-    max_rows = 0
-    for table in soup.findAll('table'):
-        number_of_rows = len(table.findAll('tr'))
-        if number_of_rows > max_rows:
-            largest_table = table
-            max_rows = number_of_rows
-
-    return largest_table
-
-
-def url_to_game_link(url):
-    if 'game/index' in url:
-        index = url[url.index('/index')+len('index/')+1:url.index('?')]
-        return 'http://stats.ncaa.org/game/box_score/'+index
-    else:
-        return None

@@ -2,6 +2,7 @@ import psycopg2
 import psycopg2.extras
 from datetime import datetime, date
 import db_tools
+import traceback
 
 
 class Query(object):
@@ -51,6 +52,21 @@ class Query(object):
             for item in result:
                 print item,
                 print '|',
+
+    def poss(self):
+        return """(0.96*(fga - oreb + turnover + (0.475*fta)))"""
+
+    def ppp(self):
+        q = """SELECT pts / %s as ppp""" % self.poss()
+        return q
+
+    def trt(self):
+        q = """SELECT turnover / %s AS trt""" % self.poss()
+        return q
+
+    def efg(self):
+        q = """SELECT (fgm + 0.5*tpm) / fga AS efg""" % self.poss()
+        return q
 
     def get_big_ten(self):
         q = """SELECT ncaaid, statsheet
@@ -156,10 +172,15 @@ class Query(object):
           keys = ', '.join(keys),
           placeholders = ', '.join([ "%s" for v in values ])
         )
-
-        self.cursor.execute(sqlCommand, values)
-        self.conn.commit()
-        #self.conn.close()
+        try:
+            self.cursor.execute(sqlCommand, values)
+            self.conn.commit()
+            return True
+        except psycopg2.IntegrityError:
+            print traceback.format_exc()
+            print 'Row already exists!'
+            self.conn.rollback()
+            return False
 
     def adjusted_stats(self, the_date):
         date_string = datetime.strftime(the_date, '%Y-%m-%d')
@@ -341,7 +362,7 @@ class Query(object):
 def main():
     q = Query()
     q.possessions()
-    q.execute(commit=True)
+    q.execute(commit=True, fetch=False)
     print q.query
     return None
     the_date = date(2014, 2, 1)
