@@ -116,7 +116,7 @@ def create_tables():
     #cur.execute("""DROP TABLE IF EXISTS games;""")
     q_dict = {}
 
-    q_dict['games'] = """CREATE TABLE games
+    q_dict['games_ss'] = """CREATE TABLE games_ss
     (
         ID SERIAL PRIMARY KEY  NOT NULL,
         home_team text         NOT NULL,
@@ -129,33 +129,36 @@ def create_tables():
         home_second int        NOT NULL,
         away_second int        NOT NULL,
         neutral_site BOOLEAN   NOT NULL,
-        officials text                 ,
+        city text                      ,
         attendance INT                 ,
+        home_spread real               ,
+        box_link text                  ,
+        pbp_link text                  ,
         venue text                     ,
         dt DATE                NOT NULL,
         UNIQUE(home_team, away_team, dt)
     );"""
-    q_dict['box_stats'] = """CREATE TABLE box_stats
+    q_dict['box_stats_ss'] = """CREATE TABLE box_stats_ss
     (
         ID SERIAL PRIMARY KEY     NOT NULL,
-        gameid int NOT NULL REFERENCES games(ID),
+        gameid int NOT NULL REFERENCES games_ss(ID),
         teamid text            NOT NULL,
         pts INT                NOT NULL,
         mp int                 NOT NULL,
-        fgm int                        ,
-        fga int                        ,
-        tpm int                        ,
-        tpa int                        ,
-        ftm int                        ,
-        fta int                        ,
-        oreb int                       ,
-        dreb int                       ,
-        reb int                        ,
-        ast int                        ,
-        stl int                        ,
-        blk int                        ,
-        turnover int                   ,
-        pf int                          
+        fgm int                NOT NULL,
+        fga int                NOT NULL,
+        tpm int                NOT NULL,
+        tpa int                NOT NULL,
+        ftm int                NOT NULL,
+        fta int                NOT NULL,
+        oreb int               NOT NULL,
+        dreb int               NOT NULL,
+        reb int                NOT NULL,
+        ast int                NOT NULL,
+        stl int                NOT NULL,
+        blk int                NOT NULL,
+        turnover int           NOT NULL,
+        pf int                 NOT NULL
     );"""
     q_dict['teams'] = """CREATE TABLE teams
     (
@@ -176,7 +179,8 @@ def main():
     #insert_game(cur,this_game)
     #create_tables(cur)
     q_dict = create_tables()
-    create_table(cur, 'teams', q_dict['teams'])
+    print q_dict['box_stats_ss']
+    create_table(cur, 'box_stats_ss', q_dict['box_stats_ss'])
     #team_exists(cur, 'Indiana')
     conn.commit()
     conn.close()

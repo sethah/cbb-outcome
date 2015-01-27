@@ -65,7 +65,10 @@ class Query(object):
         return q
 
     def efg(self):
-        q = """SELECT (fgm + 0.5*tpm) / fga AS efg""" % self.poss()
+        q = """SELECT (fgm + 0.5*tpm) / fga AS efg"""
+        return q
+    def ftr(self):
+        q = """SELECT fta / CAST(fga AS REAL) AS ftr"""
         return q
 
     def get_big_ten(self):

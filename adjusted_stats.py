@@ -31,11 +31,15 @@ class Adjusted(object):
 
     def stat_query(self):
         if self.stat == 'ppp':
-            return self.query.ppp()
+            q = self.query.ppp()
         elif self.stat == 'trt':
-            return self.query.trt()
+            q = self.query.trt()
         elif self.stat == 'efg':
-            return self.query.efg()
+            q = self.query.efg()
+        elif self.stat == 'ftr':
+            q = self.query.ftr()
+
+        return q
 
     def initialize(self):
         self.team_index()
@@ -52,7 +56,7 @@ class Adjusted(object):
                                 JOIN games g
                                 ON g.id = detailed_box.gameid 
                                 AND (g.dt BETWEEN '{start_date}' 
-                                AND '{end_date}')
+                                AND '{end_date}'))
 
                               SELECT {stat}.*,
                                     d{stat}.{stat} as d{stat},
@@ -66,16 +70,16 @@ class Adjusted(object):
                                       stat_query=self.stat_query(),
                                       start_date=self.query.get_min_date(self.dt),
                                       end_date=self.date_string)
-
         self.query.execute()
 
         raw_omat = np.empty((40, self.nteams))
         raw_dmat = np.empty((40, self.nteams))
+        ind_mat = np.empty((40, self.nteams))
+        loc_mat = np.empty((40, self.nteams))
+
         raw_omat.fill(np.nan)
         raw_dmat.fill(np.nan)
-        ind_mat = np.empty((40, self.nteams))
         ind_mat.fill(np.nan)
-        loc_mat = np.empty((40, self.nteams))
         loc_mat.fill(np.nan)
 
         for game in self.query.results:
@@ -118,6 +122,18 @@ class Adjusted(object):
             adjo = team[0]/float(100)
             adjd = team[1]/float(100)
             teamid = team[3]
+
+            # this needs to be fixed.
+            # I don't have preseason numbers for these adjusted stats
+            if self.stat == 'trt':
+                adjo = 0.2
+                adjd = 0.2
+            elif self.stat == 'efg':
+                adjo = 0.5
+                adjd = 0.5
+            elif self.stat == 'ftr':
+                adjo = 0.5
+                adjd = 0.5
             preseason_d[self.team_indices[teamid]] = adjd
             preseason_o[self.team_indices[teamid]] = adjo
 
@@ -147,8 +163,8 @@ class Adjusted(object):
         adjo = np.zeros(shape=(self.nteams, 1))
         adjd = np.zeros(shape=(self.nteams, 1))
         for team, idx in self.team_indices.iteritems():
-            adjo[idx][0] = np.nanmean(raw_o_mat[:, idx])
-            adjd[idx][0] = np.nanmean(raw_d_mat[:, idx])
+            adjo[idx][0] = np.nanmean(raw_omat[:, idx])
+            adjd[idx][0] = np.nanmean(raw_dmat[:, idx])
 
         cnt = 0
         r_off_arr = []
@@ -183,7 +199,7 @@ class Adjusted(object):
                 raw_dvec = raw_dvec.reshape(len(raw_dvec), 1)
                 loc_vec = loc_vec[~np.isnan(loc_vec)]
                 loc_vec = loc_vec.reshape(len(loc_vec), 1)
-                length = len(raw_oe_vec)
+                length = len(raw_ovec)
 
                 w, w_pre = self.weights(length, '', preseason=True)
                 new_o = np.sum(((raw_ovec / adjd[ind_o]) * w * loc_vec) * avg_o_all) + preseason_o[idx]*w_pre
@@ -203,55 +219,49 @@ class Adjusted(object):
         # print r_off_arr
         self.adjo = adjo
         self.adjd = adjd
-        # total_eff = adj_oe - adj_de
 
-        # self.query.conn.close()
-
-    def store_ranks2(self):
+    def store_ranks(self):
         self.query.query = """SELECT home_team, away_team, dt FROM features WHERE dt = '%s'""" % self.date_string
         self.query.execute()
         for game in self.query.results:
             home_idx = self.team_indices[game[0]]
             away_idx = self.team_indices[game[1]]
-            home_adjoe = self.adj_oe[home_idx][0]
-            home_adjde = self.adj_de[home_idx][0]
-            away_adjoe = self.adj_oe[away_idx][0]
-            away_adjde = self.adj_de[away_idx][0]
+            home_adjo = self.adjo[home_idx][0]
+            home_adjd = self.adjd[home_idx][0]
+            away_adjo = self.adjo[away_idx][0]
+            away_adjd = self.adjd[away_idx][0]
+
             stmt = """UPDATE features
                       SET
-                        home_adjoe = %s,
-                        home_adjde = %s,
-                        away_adjoe = %s,
-                        away_adjde = %s
-                      WHERE home_team = '%s'
-                      AND away_team = '%s'
-                      AND dt = '%s'""" % (home_adjoe, home_adjde,
-                                          away_adjoe, away_adjde,
-                                          game[0], game[1], game[2])
+                        home_adj_{stat} = {home_o},
+                        home_adj_d{stat} = {home_d},
+                        away_adj_{stat} = {away_o},
+                        away_adj_d{stat} = {away_d}
+                      WHERE home_team = '{hteam}'
+                      AND away_team = '{ateam}'
+                      AND dt = '{dt}'
+                   """.format(stat=self.stat, home_o=home_adjo,
+                              home_d=home_adjd, away_o=away_adjo,
+                              away_d=away_adjd, hteam=game[0],
+                              ateam=game[1], dt=game[2])
+
             self.query.query = stmt
             self.query.execute(fetch=False)
         self.query.conn.commit()
         self.query.conn.close()
 
-    def store_ranks(self):
-        for team, idx in self.team_indices.iteritems():
+    def print_ranks(self, rank_type='net', reverse=False):
+        if rank_type == 'net':
+            rank_arr = self.adjo - self.adjd
+        elif rank_type == 'o':
+            rank_arr = self.adjo
+        else:
+            rank_arr = self.adjd
 
-            self.query.query = """UPDATE features SET home_adjoe = %s, home_adjde = %s WHERE dt = '%s' AND (home_team = '%s')""" % (self.adj_oe[idx][0], self.adj_de[idx][0], self.date_string, team)
-            self.query.execute(commit=True)
-            self.query.query = """UPDATE features SET away_adjoe = %s, away_adjde = %s WHERE dt = '%s' AND (away_team = '%s')""" % (self.adj_oe[idx][0], self.adj_de[idx][0], self.date_string, team)
-            self.query.execute(commit=True)
-            # self.query.query = """UPDATE features SET home_adjde = %s WHERE dt = '%s' AND (home_team = '%s')""" % (self.adj_de[idx][0], self.date_string, team)
-            # self.query.execute(commit=True)
-            # self.query.query = """UPDATE features SET away_adjde = %s WHERE dt = '%s' AND (away_team = '%s')""" % (self.adj_de[idx][0], self.date_string, team)
-            # self.query.execute(commit=True)
 
-        self.query.conn.close()
-
-    def print_ranks(self):
-        rank_arr = self.adj_oe - self.adj_de
         ranks = [(team, rank_arr[idx]) for team, idx in
                  self.team_indices.iteritems()]
-        ranks = sorted(ranks, key=lambda tup: tup[1])
+        ranks = sorted(ranks, key=lambda tup: tup[1], reverse=reverse)
 
         for j in xrange(len(ranks)):
             print "#%d %s: %s" % (len(ranks) - j, ranks[j][0], ranks[j][1])
@@ -273,7 +283,6 @@ class Adjusted(object):
             w_pre = c - c*n/(n_pre)
             w_pre = max(0, w_pre)  # don't return anything less than zero
             w = w*(1./(w.sum()/(1 - w_pre)))
-            #w = np.concatenate((np.array([w_pre])[:, np.newaxis], w), axis=0)
         else:
             w_pre = 0
 
@@ -282,20 +291,15 @@ class Adjusted(object):
 
 def main():
     start_date = datetime(2013, 11, 9).date()
-    end_date = datetime(2014, 3, 1).date()
+    end_date = datetime(2014, 2, 1).date()
     day_count = (end_date - start_date).days + 1
-
-    rank = Adjusted(start_date, 'trt', Query())
-    rank.team_rank()
-    # rank.store_ranks2()
-    return None
 
     for single_date in (start_date + timedelta(n) for n in xrange(day_count)):
         print single_date
         q = Query()
-        rank = Adjusted(single_date, q)
+        rank = Adjusted(single_date, 'ppp', q)
         rank.team_rank()
-        rank.store_ranks2()
+        rank.store_ranks()
         # rank.print_ranks()
 
 

@@ -98,15 +98,16 @@ class DataPipeline(object):
                 game_data = self.process_scoreboard_game(gtable)
                 if game_data is None:
                     total += 1
-                    print total
                     continue
+
+                game_data['dt'] = dt
                 if 'home_spread' in game_data:
                     q = """UPDATE games
                            SET home_spread = %s
                            WHERE dt = '%s'
                            AND home_team = %s
                            AND away_team = %s
-                        """ % (game_data['dt'], game_data['home_team'], game_data['away_team'])
+                        """ % (game_data['home_spread'], game_data['dt'], game_data['home_team'], game_data['away_team'])
                     self.query.query = q
                     self.query.execute(commit=True, fetch=False)
                     print 'Updated %s, %s, %s' % (game_data['dt'], game_data['home_team'], game_data['away_team'])
@@ -131,9 +132,10 @@ class DataPipeline(object):
                 game_data['dt'] = dt
                 games.append(game_data)
 
-                stored = self.query.insert_values('games', game_data)
-                if not stored:
+                success = self.query.insert_values('games_ss', game_data)
+                if not success:
                     total += 1
+                    continue
 
                 # print success message
                 print 'Stored game for %s vs %s on %s' \
@@ -257,9 +259,9 @@ class DataPipeline(object):
             p = p[-2]
         else:
             p = p[-1]
-        p = BeautifulSoup(str(p).replace('<br/>', '/'), 'html.parser')
-        game_data = p.get_text().replace('\n','').split('/')
-        print game_data
+        p = BeautifulSoup(str(p).replace('<br/>', '^^'), 'html.parser')
+        game_data = p.get_text().replace('\n','').split('^^')
+
         if len(game_data) == 1:
             venue = game_data[0]
             city, attendance = ('', 0)
@@ -306,10 +308,10 @@ class DataPipeline(object):
     def process_games(self, max_iter=10):
         # get all the games from database that don't have box stats
         q = """SELECT games.id, games.box_link, games.dt 
-               FROM games 
+               FROM games_ss AS games
                WHERE not exists 
                     (SELECT box_stats.gameid
-                     FROM box_stats 
+                     FROM box_stats_ss as box_stats
                      WHERE games.id = box_stats.gameid)
                AND games.box_link IS NOT NULL;
             """
@@ -322,25 +324,35 @@ class DataPipeline(object):
             gameid = game[0]
             dt = game[2]
             soup = self.scraper.get_soup(link)
+
             venue, city, attendance, mp = self.get_game_data_ss(soup)
+            venue = venue.replace("'", "''")
+            city = city.replace("'", "''")
+            
             
             # insert these values to the game object
-            q = """UPDATE games
+            q = """UPDATE games_ss
                    SET venue = '%s', city = '%s', attendance = %s
                    WHERE id = %s""" % (venue, city, attendance, gameid)
             self.query.query = q
-            self.query.execute(commit=True)
+            self.query.execute(commit=True, fetch=False)
 
             #get the box data in list of dictionaries
             hdr_row, rows = self.get_box_rows(soup)
             box_data = self.raw_box_to_stats_ss(hdr_row, rows, mp, gameid)
 
             #insert the box data
+            team1 = box_data[0]['teamid']
+            team2 = box_data[1]['teamid']
             for row in box_data:
-                stored = self.query.insert_values('box_stats', row)
+                stored = self.query.insert_values('box_stats_ss', row)
                 if not stored:
                     print "Failed storing game %s on %s" %(gameid, dt)
                     break
+            
+            if stored:
+                msg = "%d, Stored game %s vs %s on %s" % (k, team1, team2, dt)
+                self.scraper.print_msg(msg, '-')
 
             if k >= max_iter:
                 break
@@ -756,11 +768,11 @@ class DataPipeline(object):
 
 def main():
     d = DataPipeline(site='statsheet')
-    start_date = datetime(2013, 11, 9).date()
-    end_date = datetime(2013, 11, 9).date()
+    start_date = datetime(2013, 12, 1).date()
+    end_date = datetime(2014, 3, 12).date()
     # d.scrape_scoreboard(start_date, end_date)
-    # d.process_games(max_iter=1)
-    d.update_odds(start_date, end_date)
+    d.process_games(max_iter=300)
+    # d.update_odds(start_date, end_date)
     # print 'asdf'
     # d.store_game('http://statsheet.com/mcb/games/2014/12/17/langston-65-north-texas-78')
     return None
